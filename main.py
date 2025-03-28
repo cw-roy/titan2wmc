@@ -1,12 +1,17 @@
 import requests
 from dotenv import load_dotenv
 import os
+import logging
 
 # Load environment variables from .env file
 load_dotenv()
 
 # TitanTV API Endpoints
 LOGIN_URL = "https://titantv.com/api/login"
+PROVIDERS_URL = "http://www.titantv.com/services/dataservice"  # Example URL for retrieving providers, needs to be adjusted based on actual API
+
+# LOGIN_URL = "https://titantv.com/api/login"
+# PROVIDERS_URL = "https://titantv.com/api/getProviders"  # Example URL for retrieving providers, needs to be adjusted based on actual API
 
 # Retrieve credentials from environment variables
 USERNAME = os.getenv("TITANTV_USERNAME")
@@ -22,10 +27,14 @@ HEADERS = {
 # Start a session
 session = requests.Session()
 
+# Set up logging
+logging.basicConfig(filename="titantv.log", level=logging.INFO, format='%(asctime)s - %(message)s')
+
 def login():
     """Logs into TitanTV and prints out cookies and response content to help debug UUID."""
     if not USERNAME or not PASSWORD:
         print("[-] Missing credentials. Please set TITANTV_USERNAME and TITANTV_PASSWORD in the .env file.")
+        logging.error("Missing credentials.")
         return None
 
     payload = {"loginName": USERNAME, "password": PASSWORD}
@@ -33,44 +42,63 @@ def login():
     response = session.post(LOGIN_URL, json=payload, headers=HEADERS)
 
     if response.status_code == 200 and "Set-Cookie" in response.headers:
-        print("[+] Login successful!")
+        logging.info("[+] Login successful!")
         
         # Print all cookies to inspect them manually
-        print("[+] Cookies returned by the server:")
+        logging.info("[+] Cookies returned by the server:")
         for cookie in session.cookies:
-            print(f"Cookie name: {cookie.name}, value: {cookie.value}")
+            logging.info(f"Cookie name: {cookie.name}, value: {cookie.value}")
         
-        # Optionally, print the response text if UUID is in the body
-        print("[+] Response text (for inspection):")
-        print(response.text)
+        # Optionally, print the response text for inspection
+        logging.info("[+] Response text (for inspection):")
+        logging.info(response.text)
         
-        # Check if UUID is found anywhere (you may need to adjust the search based on what you see)
-        uuid = None
-        cookies = response.cookies
-        for cookie in cookies:
-            if "UUID" in cookie.name:  # Looking for any cookie related to UUID
-                uuid = cookie.value
-                break
-
-        if uuid:
-            print(f"[+] Found UUID: {uuid}")
-        else:
-            print("[-] UUID not found in cookies.")
+        # Check if UUID is in the JSON response body (it's likely the userId field)
+        try:
+            data = response.json()  # Parse JSON response
+            user_id = data.get("userId")
+            
+            if user_id:
+                logging.info(f"[+] Found userId (UUID): {user_id}")
+            else:
+                logging.error("[-] userId (UUID) not found in the response body.")
+        except ValueError:
+            logging.error("[-] Response body is not JSON.")
         
         return session
     else:
-        print("[-] Login failed.")
-        print("Response:", response.text)
+        logging.error("[-] Login failed.")
+        logging.error(f"Response: {response.text}")
         return None
 
-# Test login and print cookies and response
+def get_provider_ids():
+    """Fetches the available provider IDs."""
+    response = session.get(PROVIDERS_URL, headers=HEADERS)
+    
+    if response.status_code == 200:
+        try:
+            data = response.json()  # Assume the API returns a JSON list of providers
+            provider_ids = [provider['ProviderId'] for provider in data.get("providers", [])]
+            logging.info(f"[+] Found Provider IDs: {provider_ids}")
+            return provider_ids
+        except ValueError:
+            logging.error("[-] Failed to parse provider data from response.")
+    else:
+        logging.error(f"[-] Failed to fetch provider data. Status code: {response.status_code}")
+        return []
+
+# Test login, fetch provider IDs, and log results
 if __name__ == "__main__":
     session = login()
     if session:
-        print("[+] Ready to proceed!")
-        print("[+] Cookies in the session:")
-        for cookie in session.cookies:
-            print(f"Cookie name: {cookie.name}, value: {cookie.value}")
+        logging.info("[+] Ready to proceed with provider ID retrieval.")
+        provider_ids = get_provider_ids()
+        if provider_ids:
+            logging.info(f"[+] Retrieved Provider IDs: {provider_ids}")
+        else:
+            logging.warning("[-] No Provider IDs found.")
+
+
 
 
 
