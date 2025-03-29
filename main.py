@@ -8,14 +8,14 @@ from datetime import datetime
 load_dotenv()
 
 # TitanTV API Endpoints
-USER_URL = "https://titantv.com/api/user/{user_id}"  # Replace with dynamic user ID
-LINEUP_URL = "https://titantv.com/api/lineup/{user_id}"  # Replace with dynamic user ID
+USER_URL = "https://titantv.com/api/user/{user_id}"
+LINEUP_URL = "https://titantv.com/api/lineup/{user_id}"
 SCHEDULE_URL = "https://titantv.com/api/schedule/{user_id}/{lineup_id}/{start_time}/{duration}"
 
 # Retrieve credentials and user ID from environment variables
 USERNAME = os.getenv("TITANTV_USERNAME")
 PASSWORD = os.getenv("TITANTV_PASSWORD")
-USER_ID = os.getenv("TITANTV_USER_ID")  # User ID should be stored in the .env
+USER_ID = os.getenv("TITANTV_USER_ID")
 
 # Headers to mimic a real browser
 HEADERS = {
@@ -169,10 +169,10 @@ if __name__ == "__main__":
             
             # Validate user and lineup
             if validate_user() and validate_lineup():
-                # If both validations are successful, proceed to fetch schedule (replace with actual lineup_id and duration)
-                lineup_id = "de9ee6e5-0d21-426b-87d7-be11545055d2"  # Example lineup ID (replace with actual)
+                # If both validations are successful, proceed to fetch schedule
+                lineup_id = "de9ee6e5-0d21-426b-87d7-be11545055d2"  # Example lineup ID
                 start_time = get_current_start_time()  # Use dynamic current start time
-                duration = "300"  # Example duration in minutes (replace with actual)
+                duration = "300"  # Example duration in minutes
                 
                 schedule_data = fetch_schedule(lineup_id, start_time, duration)
                 if schedule_data:
