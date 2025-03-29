@@ -34,6 +34,16 @@ if not USERNAME or not PASSWORD or not USER_ID:
     logging.error("[-] Missing required environment variables. Please check your .env file.")
     exit(1)
 
+DEFAULT_DURATION = "300"
+
+# Utility Functions
+def get_current_start_time():
+    """Generate start time based on the current date and time."""
+    now = datetime.now()  # Get current date and time
+    start_time = now.strftime("%Y%m%d%H%M")  # Format the date as 'YYYYMMDDHHMM'
+    return start_time
+
+# Core Functions
 def login():
     """Logs into TitanTV and prints out cookies and response content to help debug UUID."""
     if not USERNAME or not PASSWORD:
@@ -89,42 +99,37 @@ def validate_lineup():
 def fetch_schedule(lineup_id, start_time, duration):
     """Fetches TV schedule for the given lineup and time range."""
     logging.info("[+] Fetching schedule...")
-
-    if not lineup_id or not start_time or not duration:
-        logging.error("[-] Missing required parameters for fetching schedule.")
-        return None
-
-    # Construct schedule URL dynamically
     url = SCHEDULE_URL.format(user_id=USER_ID, lineup_id=lineup_id, start_time=start_time, duration=duration)
-    response = session.get(url, headers=HEADERS)
-
-    if response.status_code == 200:
-        logging.info("[+] Schedule fetched successfully.")
-        # Verify the content type and parse JSON if valid
-        if 'application/json' in response.headers['Content-Type']:
+    
+    for attempt in range(3):  # Retry up to 3 times
+        response = session.get(url, headers=HEADERS)
+        if response.status_code == 200:
             try:
-                schedule_data = response.json()  # Convert the response to JSON format
+                schedule_data = response.json()
                 logging.info("[+] Schedule data parsed successfully.")
                 return schedule_data
             except ValueError as e:
                 logging.error(f"[-] Error parsing JSON: {e}")
                 return None
-        else:
-            logging.error(f"[-] Unexpected content type: {response.headers['Content-Type']}")
+        elif response.status_code == 401:
+            logging.error("[-] Unauthorized. Check your credentials.")
             return None
-    else:
-        logging.error(f"[-] Failed to fetch schedule. Status code: {response.status_code}")
-        logging.error(f"[-] Response content: {response.text}")
-        return None
+        elif response.status_code >= 500:
+            logging.warning(f"[!] Server error (status {response.status_code}). Retrying...")
+        else:
+            logging.error(f"[-] Failed to fetch schedule. Status code: {response.status_code}")
+            logging.error(f"[-] Response content: {response.text}")
+            return None
+    logging.error("[-] All retries failed.")
+    return None
 
-def get_current_start_time():
-    """Generate start time based on the current date and time."""
-    now = datetime.now()  # Get current date and time
-    start_time = now.strftime("%Y%m%d%H%M")  # Format the date as 'YYYYMMDDHHMM'
-    return start_time
-
+# Data Processing Functions
 def extract_listings(schedule_data):
     """Extracts and processes TV listings from the fetched schedule data."""
+    if not schedule_data or "channels" not in schedule_data:
+        logging.error("[-] No valid schedule data found.")
+        return []
+
     listings = []
     
     # Ensure the response has 'channels'
@@ -154,8 +159,7 @@ def extract_listings(schedule_data):
     
     return listings
 
-
-# Test login, user validation, and provider validation
+# Main Execution Block
 if __name__ == "__main__":
     try:
         logging.info("[+] Start run...")
@@ -182,5 +186,6 @@ if __name__ == "__main__":
                 logging.error("[-] User and provider validation failed.")
         logging.info("[+] End of run.")
     finally:       
-        session.close()
-    logging.info("[+] Session closed.")
+        if session:
+            session.close()
+            logging.info("[+] Session closed.")
