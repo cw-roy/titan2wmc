@@ -30,6 +30,10 @@ session = requests.Session()
 # Set up logging
 logging.basicConfig(filename="titantv.log", level=logging.INFO, format='%(asctime)s - %(message)s')
 
+if not USERNAME or not PASSWORD or not USER_ID:
+    logging.error("[-] Missing required environment variables. Please check your .env file.")
+    exit(1)
+
 def login():
     """Logs into TitanTV and prints out cookies and response content to help debug UUID."""
     if not USERNAME or not PASSWORD:
@@ -85,6 +89,10 @@ def validate_lineup():
 def fetch_schedule(lineup_id, start_time, duration):
     """Fetches TV schedule for the given lineup and time range."""
     logging.info("[+] Fetching schedule...")
+
+    if not lineup_id or not start_time or not duration:
+        logging.error("[-] Missing required parameters for fetching schedule.")
+        return None
 
     # Construct schedule URL dynamically
     url = SCHEDULE_URL.format(user_id=USER_ID, lineup_id=lineup_id, start_time=start_time, duration=duration)
