@@ -27,7 +27,6 @@ HEADERS = {
 # Start a session
 session = requests.Session()
 
-
 # Set up logging
 logging.basicConfig(filename="titantv.log", level=logging.INFO, format='%(asctime)s - %(message)s')
 
@@ -93,7 +92,18 @@ def fetch_schedule(lineup_id, start_time, duration):
 
     if response.status_code == 200:
         logging.info("[+] Schedule fetched successfully.")
-        return response.text
+        # Verify the content type and parse JSON if valid
+        if 'application/json' in response.headers['Content-Type']:
+            try:
+                schedule_data = response.json()  # Convert the response to JSON format
+                logging.info("[+] Schedule data parsed successfully.")
+                return schedule_data
+            except ValueError as e:
+                logging.error(f"[-] Error parsing JSON: {e}")
+                return None
+        else:
+            logging.error(f"[-] Unexpected content type: {response.headers['Content-Type']}")
+            return None
     else:
         logging.error(f"[-] Failed to fetch schedule. Status code: {response.status_code}")
         logging.error(f"[-] Response content: {response.text}")
@@ -104,6 +114,38 @@ def get_current_start_time():
     now = datetime.now()  # Get current date and time
     start_time = now.strftime("%Y%m%d%H%M")  # Format the date as 'YYYYMMDDHHMM'
     return start_time
+
+def extract_listings(schedule_data):
+    """Extracts and processes TV listings from the fetched schedule data."""
+    listings = []
+    
+    # Ensure the response has 'channels'
+    if "channels" in schedule_data:
+        for channel in schedule_data["channels"]:
+            if "days" in channel:
+                for day in channel["days"]:
+                    if "events" in day:
+                        for event in day["events"]:
+                            try:
+                                event_details = {
+                                    "title": event.get("title", "N/A"),
+                                    "episode_title": event.get("episodeTitle", "N/A"),
+                                    "start_time": event.get("startTime", "N/A"),
+                                    "end_time": event.get("endTime", "N/A"),
+                                    "duration": event.get("duration", "N/A"),
+                                    "channel_index": channel.get("channelIndex", "N/A"),
+                                    "description": event.get("description", "N/A"),
+                                    "display_genre": event.get("displayGenre", "N/A"),
+                                    "show_card": event.get("showCard", ""),
+                                }
+                                listings.append(event_details)
+                            except KeyError as e:
+                                logging.error(f"[-] Missing expected key: {e}")
+    else:
+        logging.error("[-] No 'channels' found in schedule data.")
+    
+    return listings
+
 
 # Test login, user validation, and provider validation
 if __name__ == "__main__":
@@ -122,7 +164,12 @@ if __name__ == "__main__":
                 
                 schedule_data = fetch_schedule(lineup_id, start_time, duration)
                 if schedule_data:
-                    logging.info("[+] Successfully fetched schedule data.")
+                    # Extract and log the TV listings
+                    listings = extract_listings(schedule_data)
+                    if listings:
+                        logging.info(f"[+] Found {len(listings)} listings.")
+                    else:
+                        logging.error("[-] No listings found.")
             else:
                 logging.error("[-] User and provider validation failed.")
         logging.info("[+] End of run.")
