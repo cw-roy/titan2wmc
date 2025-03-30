@@ -188,3 +188,21 @@ def fetch_schedule(lineup_id, start_time, duration):
         logging.error(f"[-] Failed to fetch schedule. Status code: {response.status_code}")
         logging.error(f"[-] Response content: {response.text}")
         return None
+
+def fetch_services():
+    """Fetch details about services."""
+    logging.info("[+] Fetching services...")
+    # Add logic to fetch services from the API
+    pass
+
+def fetch_people():
+    """Fetch details about people (actors, directors, etc.)."""
+    logging.info("[+] Fetching people...")
+    # Add logic to fetch people from the API
+    pass
+
+def fetch_guide_images():
+    """Fetch guide images and associate them with programs."""
+    logging.info("[+] Fetching guide images...")
+    # Add logic to fetch guide images from the API
+    pass
