@@ -95,6 +95,32 @@ def validate_lineup():
         logging.error(f"[-] Failed to validate lineup. Status code: {response.status_code}")
         logging.error(f"[-] Response content: {response.text}")
         return False
+    
+def fetch_provider_info():
+    """Fetch provider information from the TitanTV API."""
+    logging.info("[+] Fetching provider information...")
+
+    url = USER_URL.format(user_id=USER_ID)
+    response = session.get(url, headers=HEADERS)
+
+    if response.status_code == 200:
+        try:
+            user_data = response.json()
+            provider_info = {
+                "providerId": user_data.get("userId", "N/A"),
+                "providerName": user_data.get("loginName", "N/A"),
+            }
+            logging.info(f"[+] Provider information fetched successfully: {provider_info}")
+            logging.info(f"[+] Provider Info: {provider_info}")
+            return provider_info
+        except ValueError as e:
+            logging.error(f"[-] Error parsing JSON: {e}")
+            return None
+    else:
+        logging.error(f"[-] Failed to fetch provider information. Status code: {response.status_code}")
+        logging.error(f"[-] Response content: {response.text}")
+        return None
+
 
 def fetch_schedule(lineup_id, start_time, duration):
     """Fetches TV schedule for the given lineup and time range."""
@@ -167,23 +193,40 @@ if __name__ == "__main__":
         if session:
             logging.info("[+] Ready to proceed with user and provider validation.")
             
-            # Validate user and lineup
-            if validate_user() and validate_lineup():
-                # If both validations are successful, proceed to fetch schedule
-                lineup_id = "de9ee6e5-0d21-426b-87d7-be11545055d2"  # Example lineup ID
-                start_time = get_current_start_time()  # Use dynamic current start time
-                duration = "300"  # Example duration in minutes
+            # Validate user
+            if validate_user():
+                # Fetch provider information after validating user
+                provider_info = fetch_provider_info()
+                if not provider_info:
+                    logging.error("[-] Failed to fetch provider information. Exiting.")
+                    exit(1)
                 
-                schedule_data = fetch_schedule(lineup_id, start_time, duration)
-                if schedule_data:
-                    # Extract and log the TV listings
-                    listings = extract_listings(schedule_data)
-                    if listings:
-                        logging.info(f"[+] Found {len(listings)} listings.")
-                    else:
-                        logging.error("[-] No listings found.")
+                # Log provider information
+                logging.info(f"[+] Using provider: {provider_info['providerName']} (ID: {provider_info['providerId']})")
+                
+                # Validate provider lineup
+                if validate_lineup():
+                    # Use providerId dynamically for lineup_id
+                    lineup_id = provider_info.get("providerId", "default_lineup_id")
+                    start_time = get_current_start_time()  # Use dynamic current start time
+                    duration = "60"  # Example duration in minutes. Adjust as needed.
+                    
+                    logging.info(f"[+] Fetching schedule for lineup ID: {lineup_id}, start time: {start_time}, duration: {duration} minutes.")
+                    
+                    # Fetch the schedule data             
+                    schedule_data = fetch_schedule(lineup_id, start_time, duration)
+                    if schedule_data:
+                        # Extract and log the TV listings
+                        listings = extract_listings(schedule_data)
+                        if listings:
+                            logging.info(f"[+] Found {len(listings)} listings.")
+                        else:
+                            logging.error("[-] No listings found.")
+                else:
+                    logging.error("[-] Provider lineup validation failed.")
             else:
-                logging.error("[-] User and provider validation failed.")
+                logging.error("[-] User validation failed.")
+                
         logging.info("[+] End of run.")
     finally:       
         if session:
