@@ -306,6 +306,39 @@ def extract_schedule_entries(schedule_data):
     
     return schedule_entries
 
+def extract_cast_and_crew(schedule_data):
+    """Extracts and processes cast and crew from the fetched schedule."""
+    if not schedule_data or "channels" not in schedule_data:
+        logging.error("[-] No valid schedule data found.")
+        return []
+
+    cast_and_crew = []
+    
+    # Ensure the response has 'channels'
+    if "channels" in schedule_data:
+        for channel in schedule_data["channels"]:
+            if "days" in channel:
+                for day in channel["days"]:
+                    if "events" in day:
+                        for event in day["events"]:
+                            try:
+                                # Check for cast and crew in each event
+                                if "castAndCrew" in event:
+                                    for person in event["castAndCrew"]:
+                                        person_info = {
+                                            "personId": person.get("personId", "N/A"),
+                                            "name": person.get("name", "N/A"),
+                                            "role": person.get("role", "N/A"),
+                                            "character": person.get("character", "N/A"),
+                                        }
+                                        cast_and_crew.append(person_info)
+                            except KeyError as e:
+                                logging.error(f"[-] Missing expected key: {e}")
+    else:
+        logging.error("[-] No 'channels' found in schedule data.")
+    
+    return cast_and_crew
+
 # Data Processing Functions
 def extract_listings(schedule_data):
     """Extracts and processes TV listings from the fetched schedule data."""
@@ -415,6 +448,15 @@ if __name__ == "__main__":
                                 logging.info(f"Event {entry['eventId']}: {entry['startTime']} - {entry['endTime']} (Duration: {entry['duration']} minutes)")
                         else:
                             logging.error("[-] No schedule entries found.")
+                        
+                        # Extract and log the cast and crew
+                        cast_and_crew = extract_cast_and_crew(schedule_data)
+                        if cast_and_crew:
+                            logging.info(f"[+] Found {len(cast_and_crew)} cast and crew members.")
+                            for person in cast_and_crew:
+                                logging.info(f"Person {person['personId']}: {person['name']} - {person['role']} as {person['character']}")
+                        else:
+                            logging.error("[-] No cast and crew found.")
                 else:
                     logging.error("[-] Provider lineup validation failed.")
             else:
