@@ -339,6 +339,47 @@ def extract_cast_and_crew(schedule_data):
     
     return cast_and_crew
 
+def extract_guide_images(schedule_data, channels):
+    """Extracts and processes guide images from the fetched schedule and channel data."""
+    if not schedule_data or "channels" not in schedule_data:
+        logging.error("[-] No valid schedule data found.")
+        return []
+
+    guide_images = []
+    
+    # Extracting showCard (program images) from schedule
+    if "channels" in schedule_data:
+        for channel in schedule_data["channels"]:
+            if "days" in channel:
+                for day in channel["days"]:
+                    if "events" in day:
+                        for event in day["events"]:
+                            try:
+                                show_card = event.get("showCard", "")
+                                if show_card:
+                                    guide_images.append({
+                                        "showCard": show_card,
+                                        "channelId": channel.get("channelId", "N/A"),
+                                        "eventId": event.get("eventId", "N/A"),
+                                    })
+                            except KeyError as e:
+                                logging.error(f"[-] Missing expected key: {e}")
+    
+    # Extracting logo (station logos) from channels
+    for channel in channels:
+        try:
+            logo = channel.get("logo", "")
+            if logo:
+                guide_images.append({
+                    "logo": logo,
+                    "channelId": channel.get("channelId", "N/A"),
+                })
+        except KeyError as e:
+            logging.error(f"[-] Missing expected key: {e}")
+    
+    return guide_images
+
+
 # Data Processing Functions
 def extract_listings(schedule_data):
     """Extracts and processes TV listings from the fetched schedule data."""
@@ -374,6 +415,7 @@ def extract_listings(schedule_data):
         logging.error("[-] No 'channels' found in schedule data.")
     
     return listings
+
 if __name__ == "__main__":
     try:
         logging.info("[+] Start run...")
@@ -457,6 +499,18 @@ if __name__ == "__main__":
                                 logging.info(f"Person {person['personId']}: {person['name']} - {person['role']} as {person['character']}")
                         else:
                             logging.error("[-] No cast and crew found.")
+                        
+                        # Extract and log the guide images
+                        guide_images = extract_guide_images(schedule_data, channels)
+                        if guide_images:
+                            logging.info(f"[+] Found {len(guide_images)} guide images.")
+                            for image in guide_images:
+                                if "showCard" in image:
+                                    logging.info(f"Show Card for Event {image['eventId']}: {image['showCard']}")
+                                if "logo" in image:
+                                    logging.info(f"Logo for Channel {image['channelId']}: {image['logo']}")
+                        else:
+                            logging.error("[-] No guide images found.")
                 else:
                     logging.error("[-] Provider lineup validation failed.")
             else:
