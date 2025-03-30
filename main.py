@@ -95,7 +95,7 @@ def validate_lineup():
         logging.error(f"[-] Failed to validate lineup. Status code: {response.status_code}")
         logging.error(f"[-] Response content: {response.text}")
         return False
-    
+
 def fetch_provider_info():
     """Fetch provider information from the TitanTV API."""
     logging.info("[+] Fetching provider information...")
@@ -120,6 +120,91 @@ def fetch_provider_info():
         logging.error(f"[-] Failed to fetch provider information. Status code: {response.status_code}")
         logging.error(f"[-] Response content: {response.text}")
         return None
+
+def fetch_lineup_info():
+    """Fetch lineup information from the TitanTV API."""
+    logging.info("[+] Fetching lineup information...")
+
+    url = LINEUP_URL.format(user_id=USER_ID)
+    response = session.get(url, headers=HEADERS)
+
+    if response.status_code == 200:
+        try:
+            lineup_data = response.json()
+
+            # Check if the "lineups" key is present and it's a non-empty list
+            if "lineups" in lineup_data and lineup_data["lineups"]:
+                lineup_info = lineup_data["lineups"][0]  # Take the first lineup if available
+                lineup_info = {
+                    "lineupId": lineup_info.get("lineupId"),
+                    "lineupName": lineup_info.get("lineupName"),
+                    "timeZone": lineup_info.get("timeZone"),
+                    "utcOffset": lineup_info.get("utcOffset"),
+                    "providerId": lineup_info.get("providerId"),
+                    "providerName": lineup_info.get("providerName"),
+                }
+                if not lineup_info["lineupId"]:
+                    logging.error("[-] Missing lineupId in response.")
+                    return None
+                logging.info(f"[+] Lineup information fetched successfully: {lineup_info}")
+                return lineup_info
+            else:
+                logging.error("[-] No lineups found in response.")
+                return None
+        except ValueError as e:
+            logging.error(f"[-] Error parsing JSON: {e}")
+            return None
+    else:
+        logging.error(f"[-] Failed to fetch lineup information. Status code: {response.status_code}")
+        logging.error(f"[-] Response content: {response.text}")
+        return None
+
+def fetch_channel_info(lineup_id):
+    """Fetch channel information from the TitanTV API."""
+    logging.info("[+] Fetching channel information...")
+
+    url = f"https://titantv.com/api/channel/{USER_ID}/{lineup_id}"
+    response = session.get(url, headers=HEADERS)
+
+    if response.status_code == 200:
+        try:
+            channel_data = response.json()
+
+            # Check if the "channels" key is present and it's a non-empty list
+            if "channels" in channel_data and channel_data["channels"]:
+                channels = []
+                for channel in channel_data["channels"]:
+                    channel_info = {
+                        "channelId": channel.get("channelId"),
+                        "majorChannel": channel.get("majorChannel"),
+                        "minorChannel": channel.get("minorChannel"),
+                        "rfChannel": channel.get("rfChannel"),
+                        "callSign": channel.get("callSign"),
+                        "network": channel.get("network"),
+                        "description": channel.get("description"),
+                        "hdCapable": channel.get("hdCapable"),
+                        "logo": channel.get("logo"),
+                    }
+
+                    if not channel_info["channelId"]:
+                        logging.error("[-] Missing channelId in response.")
+                        return None
+                    
+                    channels.append(channel_info)
+
+                logging.info(f"[+] Channel information fetched successfully. Found {len(channels)} channels.")
+                return channels
+            else:
+                logging.error("[-] No channels found in response.")
+                return None
+        except ValueError as e:
+            logging.error(f"[-] Error parsing JSON: {e}")
+            return None
+    else:
+        logging.error(f"[-] Failed to fetch channel information. Status code: {response.status_code}")
+        logging.error(f"[-] Response content: {response.text}")
+        return None
+
 
 
 def fetch_schedule(lineup_id, start_time, duration):
@@ -185,7 +270,6 @@ def extract_listings(schedule_data):
     
     return listings
 
-# Main Execution Block
 if __name__ == "__main__":
     try:
         logging.info("[+] Start run...")
@@ -204,10 +288,30 @@ if __name__ == "__main__":
                 # Log provider information
                 logging.info(f"[+] Using provider: {provider_info['providerName']} (ID: {provider_info['providerId']})")
                 
+                # Fetch lineup information after fetching provider info
+                lineup_info = fetch_lineup_info()
+                if not lineup_info:
+                    logging.error("[-] Failed to fetch lineup information. Exiting.")
+                    exit(1)
+                
+                # Log lineup information
+                logging.info(f"[+] Using lineup: {lineup_info['lineupName']} (ID: {lineup_info['lineupId']})")
+                
+                # Fetch channel information
+                channels = fetch_channel_info(lineup_info['lineupId'])
+                if not channels:
+                    logging.error("[-] Failed to fetch channel information. Exiting.")
+                    exit(1)
+
+                # Log channel information
+                logging.info(f"[+] Found {len(channels)} channels.")
+                for channel in channels:
+                    logging.info(f"Channel {channel['channelId']}: {channel['callSign']} - {channel['network']}")
+
                 # Validate provider lineup
                 if validate_lineup():
-                    # Use providerId dynamically for lineup_id
-                    lineup_id = provider_info.get("providerId", "default_lineup_id")
+                    # Use lineupId dynamically for fetching schedule
+                    lineup_id = lineup_info.get("lineupId", "default_lineup_id")
                     start_time = get_current_start_time()  # Use dynamic current start time
                     duration = "60"  # Example duration in minutes. Adjust as needed.
                     
