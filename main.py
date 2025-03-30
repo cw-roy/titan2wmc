@@ -243,7 +243,6 @@ def extract_programs(schedule_data):
     
     return programs
 
-
 def fetch_schedule(lineup_id, start_time, duration):
     """Fetches TV schedule for the given lineup and time range."""
     logging.info("[+] Fetching schedule...")
@@ -270,6 +269,42 @@ def fetch_schedule(lineup_id, start_time, duration):
             return None
     logging.error("[-] All retries failed.")
     return None
+
+def extract_schedule_entries(schedule_data):
+    """Extracts and processes schedule entries from the fetched schedule."""
+    if not schedule_data or "channels" not in schedule_data:
+        logging.error("[-] No valid schedule data found.")
+        return []
+
+    schedule_entries = []
+    
+    # Ensure the response has 'channels'
+    if "channels" in schedule_data:
+        for channel in schedule_data["channels"]:
+            if "days" in channel:
+                for day in channel["days"]:
+                    if "events" in day:
+                        for event in day["events"]:
+                            try:
+                                schedule_entry = {
+                                    "eventId": event.get("eventId", "N/A"),
+                                    "startTime": event.get("startTime", "N/A"),
+                                    "endTime": event.get("endTime", "N/A"),
+                                    "duration": event.get("duration", "N/A"),
+                                    "newRepeat": event.get("newRepeat", "N/A"),
+                                    "liveTapeReplay": event.get("liveTapeReplay", "N/A"),
+                                    "textLanguage": event.get("textLanguage", "N/A"),
+                                    "seriesDescription": event.get("seriesDescription", "N/A"),
+                                    "seasonNumber": event.get("seasonNumber", "N/A"),
+                                    "seasonEpisodeNumber": event.get("seasonEpisodeNumber", "N/A"),
+                                }
+                                schedule_entries.append(schedule_entry)
+                            except KeyError as e:
+                                logging.error(f"[-] Missing expected key: {e}")
+    else:
+        logging.error("[-] No 'channels' found in schedule data.")
+    
+    return schedule_entries
 
 # Data Processing Functions
 def extract_listings(schedule_data):
@@ -306,7 +341,6 @@ def extract_listings(schedule_data):
         logging.error("[-] No 'channels' found in schedule data.")
     
     return listings
-
 if __name__ == "__main__":
     try:
         logging.info("[+] Start run...")
@@ -372,6 +406,15 @@ if __name__ == "__main__":
                                 logging.info(f"Program {program['programId']}: {program['title']} - {program['episodeTitle']} ({program['programType']})")
                         else:
                             logging.error("[-] No programs found.")
+                        
+                        # Extract and log the schedule entries
+                        schedule_entries = extract_schedule_entries(schedule_data)
+                        if schedule_entries:
+                            logging.info(f"[+] Found {len(schedule_entries)} schedule entries.")
+                            for entry in schedule_entries:
+                                logging.info(f"Event {entry['eventId']}: {entry['startTime']} - {entry['endTime']} (Duration: {entry['duration']} minutes)")
+                        else:
+                            logging.error("[-] No schedule entries found.")
                 else:
                     logging.error("[-] Provider lineup validation failed.")
             else:
