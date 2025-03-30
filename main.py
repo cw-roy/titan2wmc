@@ -1,4 +1,3 @@
-from datetime import datetime
 import logging
 from api_requests import (
     login,
@@ -10,17 +9,12 @@ from api_requests import (
     fetch_schedule,
 )
 from data_processing import extract_listings, summarize_listings, save_listings_to_file
+from utils import get_current_start_time  # Import the utility function
 
 # Set up logging
 logging.basicConfig(filename="titantv.log", level=logging.INFO, format='%(asctime)s - %(message)s')
 
 DEFAULT_DURATION = "300"
-
-def get_current_start_time():
-    """Generate start time based on the current date and time."""
-    now = datetime.now()  # Get current date and time
-    start_time = now.strftime("%Y%m%d%H%M")  # Format the date as 'YYYYMMDDHHMM'
-    return start_time
 
 if __name__ == "__main__":
     try:
@@ -51,7 +45,7 @@ if __name__ == "__main__":
 
                 # Fetch schedule
                 lineup_id = lineup_info.get("lineupId")
-                start_time = get_current_start_time()
+                start_time = get_current_start_time()  # Use the utility function
                 duration = DEFAULT_DURATION
                 schedule_data = fetch_schedule(lineup_id, start_time, duration)
                 if schedule_data:
