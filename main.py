@@ -205,6 +205,43 @@ def fetch_channel_info(lineup_id):
         logging.error(f"[-] Response content: {response.text}")
         return None
 
+def extract_programs(schedule_data):
+    """Extracts and processes program data from the fetched schedule."""
+    if not schedule_data or "channels" not in schedule_data:
+        logging.error("[-] No valid schedule data found.")
+        return []
+
+    programs = []
+    
+    # Ensure the response has 'channels'
+    if "channels" in schedule_data:
+        for channel in schedule_data["channels"]:
+            if "days" in channel:
+                for day in channel["days"]:
+                    if "events" in day:
+                        for event in day["events"]:
+                            try:
+                                program_info = {
+                                    "programId": event.get("programId", "N/A"),
+                                    "title": event.get("title", "N/A"),
+                                    "episodeTitle": event.get("episodeTitle", "N/A"),
+                                    "description": event.get("description", "N/A"),
+                                    "programType": event.get("programType", "N/A"),
+                                    "year": event.get("year", "N/A"),
+                                    "originalAirDate": event.get("originalAirDate", "N/A"),
+                                    "tvRating": event.get("tvRating", "N/A"),
+                                    "mpaaRating": event.get("mpaaRating", "N/A"),
+                                    "displayGenre": event.get("displayGenre", "N/A"),
+                                    "starRating": event.get("starRating", "N/A"),
+                                    "showCard": event.get("showCard", ""),
+                                }
+                                programs.append(program_info)
+                            except KeyError as e:
+                                logging.error(f"[-] Missing expected key: {e}")
+    else:
+        logging.error("[-] No 'channels' found in schedule data.")
+    
+    return programs
 
 
 def fetch_schedule(lineup_id, start_time, duration):
@@ -326,6 +363,15 @@ if __name__ == "__main__":
                             logging.info(f"[+] Found {len(listings)} listings.")
                         else:
                             logging.error("[-] No listings found.")
+                        
+                        # Extract and log the programs
+                        programs = extract_programs(schedule_data)
+                        if programs:
+                            logging.info(f"[+] Found {len(programs)} programs.")
+                            for program in programs:
+                                logging.info(f"Program {program['programId']}: {program['title']} - {program['episodeTitle']} ({program['programType']})")
+                        else:
+                            logging.error("[-] No programs found.")
                 else:
                     logging.error("[-] Provider lineup validation failed.")
             else:
