@@ -3,13 +3,12 @@ import logging
 from api_requests import (
     login,
     validate_user,
-    validate_lineup,
+    # validate_lineup,
     fetch_provider_info,
     fetch_lineup_info,
     fetch_channel_info,
     fetch_schedule,
 )
-from data_processing import extract_listings, summarize_listings, save_listings_to_file
 
 # Set up logging
 logging.basicConfig(filename="titantv.log", level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -56,11 +55,6 @@ if __name__ == "__main__":
                 schedule_data = fetch_schedule(lineup_id, start_time, duration)
                 if schedule_data:
                     logging.info("[+] Schedule fetched successfully.")
-                    
-                    # Process and save listings
-                    listings = extract_listings(schedule_data)
-                    summarize_listings(listings)
-                    save_listings_to_file(listings)
                 else:
                     logging.error("[-] Failed to fetch schedule.")
             else:
