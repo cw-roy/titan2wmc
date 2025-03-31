@@ -7,26 +7,32 @@ def extract_listings(schedule_data):
         return []
 
     listings = []
-    for channel in schedule_data.get("channels", []):
-        for day in channel.get("days", []):
-            for event in day.get("events", []):
-                try:
-                    event_details = {
-                        "title": event.get("title", "N/A"),
-                        "episode_title": event.get("episodeTitle", "N/A"),
-                        "start_time": event.get("startTime", "N/A"),
-                        "end_time": event.get("endTime", "N/A"),
-                        "duration": event.get("duration", "N/A"),
-                        "isCC": event.get("isCC", "N/A"),
-                        "audioFormat": event.get("audioFormat", "N/A"),
-                        "service": channel.get("service", "N/A"),
-                        "originalAirdate": event.get("originalAirdate", "N/A"),
-                        "keywords": event.get("keywords", []),
-                        "roles": event.get("roles", []),
-                    }
-                    listings.append(event_details)
-                except KeyError as e:
-                    logging.error(f"[-] Missing expected key: {e}")
+    
+    # Ensure the response has 'channels'
+    if "channels" in schedule_data:
+        for channel in schedule_data["channels"]:
+            if "days" in channel:
+                for day in channel["days"]:
+                    if "events" in day:
+                        for event in day["events"]:
+                            try:
+                                event_details = {
+                                    "title": event.get("title", "N/A"),
+                                    "episode_title": event.get("episodeTitle", "N/A"),
+                                    "start_time": event.get("startTime", "N/A"),
+                                    "end_time": event.get("endTime", "N/A"),
+                                    "duration": event.get("duration", "N/A"),
+                                    "channel_index": channel.get("channelIndex", "N/A"),
+                                    "description": event.get("description", "N/A"),
+                                    "display_genre": event.get("displayGenre", "N/A"),
+                                    "show_card": event.get("showCard", ""),
+                                }
+                                listings.append(event_details)
+                            except KeyError as e:
+                                logging.error(f"[-] Missing expected key: {e}")
+    else:
+        logging.error("[-] No 'channels' found in schedule data.")
+    
     return listings
 
 def summarize_listings(listings):

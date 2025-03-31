@@ -2,6 +2,7 @@ import logging
 from api_requests import (
     login,
     validate_user,
+    validate_lineup,
     fetch_provider_info,
     fetch_lineup_info,
     fetch_channel_info,
@@ -44,7 +45,7 @@ if __name__ == "__main__":
 
                 # Fetch schedule
                 lineup_id = lineup_info.get("lineupId")
-                start_time = get_current_start_time()
+                start_time = get_current_start_time()  # Use the utility function
                 duration = DEFAULT_DURATION
                 schedule_data = fetch_schedule(lineup_id, start_time, duration)
                 if schedule_data:
