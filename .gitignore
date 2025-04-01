@@ -1,9 +1,7 @@
 # Custom
-*.har
 last_working.py
 example_json/
-listings.json
-sample.mxf
+*.mxf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

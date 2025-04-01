@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import os
 import logging
 from datetime import datetime
+import xml.etree.ElementTree as ET
 
 # Load environment variables from .env file
 load_dotenv()
@@ -174,8 +175,13 @@ def fetch_channel_info(lineup_id):
             if "channels" in channel_data and channel_data["channels"]:
                 channels = []
                 for channel in channel_data["channels"]:
+                    if "channelIndex" not in channel:
+                        logging.error(f"[-] Missing 'channelIndex' in channel data: {channel}")
+                        continue  # Skip this channel if 'channelIndex' is missing
+
                     channel_info = {
                         "channelId": channel.get("channelId"),
+                        "channelIndex": channel.get("channelIndex"),
                         "majorChannel": channel.get("majorChannel"),
                         "minorChannel": channel.get("minorChannel"),
                         "rfChannel": channel.get("rfChannel"),
@@ -186,10 +192,6 @@ def fetch_channel_info(lineup_id):
                         "logo": channel.get("logo"),
                     }
 
-                    if not channel_info["channelId"]:
-                        logging.error("[-] Missing channelId in response.")
-                        return None
-                    
                     channels.append(channel_info)
 
                 logging.info(f"[+] Channel information fetched successfully. Found {len(channels)} channels.")
@@ -416,6 +418,57 @@ def extract_listings(schedule_data):
     
     return listings
 
+def generate_mxf(provider_info, lineup_info, channels, schedule_data):
+    """Generate the .mxf XML structure."""
+    root = ET.Element("MXF", attrib={
+        "xmlns:sql": "urn:schemas-microsoft-com:XML-sql",
+        "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance"
+    })
+
+    # Add Provider
+    provider = ET.SubElement(root, "With", attrib={"provider": provider_info["providerId"]})
+
+    # Add ScheduleEntries
+    for channel in schedule_data.get("channels", []):
+        service_id = f"s{channel.get('channelIndex', 'unknown')}"  # Use 'unknown' if channelIndex is missing
+        schedule_entries = ET.SubElement(provider, "ScheduleEntries", attrib={"service": service_id})
+        for day in channel.get("days", []):
+            for event in day.get("events", []):
+                ET.SubElement(schedule_entries, "ScheduleEntry", attrib={
+                    "program": str(event["programId"]),
+                    "startTime": event["startTime"],
+                    "duration": str(event["duration"]),
+                    "isCC": "1" if event.get("isHD", False) else "0",
+                    "audioFormat": "2"  # Example value, adjust as needed
+                })
+
+    # Add Lineups
+    lineups = ET.SubElement(provider, "Lineups")
+    lineup = ET.SubElement(lineups, "Lineup", attrib={
+        "id": lineup_info["lineupId"],
+        "uid": f"!Lineup!{lineup_info['lineupName'].replace(' ', '')}",
+        "name": lineup_info["lineupName"],
+        "primaryProvider": str(lineup_info["providerId"])
+    })
+
+    # Add Channels
+    channels_element = ET.SubElement(lineup, "channels")
+    for channel in channels:
+        channel_index = channel.get("channelIndex")
+        if not channel_index:
+            logging.error(f"[-] Missing 'channelIndex' for channel: {channel}")
+            continue  # Skip this channel if 'channelIndex' is missing
+
+        ET.SubElement(channels_element, "Channel", attrib={
+            "uid": f"!Channel!{lineup_info['lineupName'].replace(' ', '')}!{channel_index}",
+            "lineup": lineup_info["lineupId"],
+            "service": f"s{channel_index}",
+            "number": f"{channel['majorChannel']}.{channel['minorChannel']}"
+        })
+
+    # Convert to string and return
+    return ET.tostring(root, encoding="unicode", method="xml")
+
 if __name__ == "__main__":
     try:
         logging.info("[+] Start run...")
@@ -425,23 +478,17 @@ if __name__ == "__main__":
             
             # Validate user
             if validate_user():
-                # Fetch provider information after validating user
+                # Fetch provider information
                 provider_info = fetch_provider_info()
                 if not provider_info:
                     logging.error("[-] Failed to fetch provider information. Exiting.")
                     exit(1)
                 
-                # Log provider information
-                logging.info(f"[+] Using provider: {provider_info['providerName']} (ID: {provider_info['providerId']})")
-                
-                # Fetch lineup information after fetching provider info
+                # Fetch lineup information
                 lineup_info = fetch_lineup_info()
                 if not lineup_info:
                     logging.error("[-] Failed to fetch lineup information. Exiting.")
                     exit(1)
-                
-                # Log lineup information
-                logging.info(f"[+] Using lineup: {lineup_info['lineupName']} (ID: {lineup_info['lineupId']})")
                 
                 # Fetch channel information
                 channels = fetch_channel_info(lineup_info['lineupId'])
@@ -449,75 +496,25 @@ if __name__ == "__main__":
                     logging.error("[-] Failed to fetch channel information. Exiting.")
                     exit(1)
 
-                # Log channel information
-                logging.info(f"[+] Found {len(channels)} channels.")
-                for channel in channels:
-                    logging.info(f"Channel {channel['channelId']}: {channel['callSign']} - {channel['network']}")
+                # Fetch schedule
+                start_time = get_current_start_time()
+                duration = DEFAULT_DURATION
+                schedule_data = fetch_schedule(lineup_info['lineupId'], start_time, duration)
+                if not schedule_data:
+                    logging.error("[-] Failed to fetch schedule. Exiting.")
+                    exit(1)
 
-                # Validate provider lineup
-                if validate_lineup():
-                    # Use lineupId dynamically for fetching schedule
-                    lineup_id = lineup_info.get("lineupId", "default_lineup_id")
-                    start_time = get_current_start_time()  # Use dynamic current start time
-                    duration = "60"  # Example duration in minutes. Adjust as needed.
-                    
-                    logging.info(f"[+] Fetching schedule for lineup ID: {lineup_id}, start time: {start_time}, duration: {duration} minutes.")
-                    
-                    # Fetch the schedule data             
-                    schedule_data = fetch_schedule(lineup_id, start_time, duration)
-                    if schedule_data:
-                        # Extract and log the TV listings
-                        listings = extract_listings(schedule_data)
-                        if listings:
-                            logging.info(f"[+] Found {len(listings)} listings.")
-                        else:
-                            logging.error("[-] No listings found.")
-                        
-                        # Extract and log the programs
-                        programs = extract_programs(schedule_data)
-                        if programs:
-                            logging.info(f"[+] Found {len(programs)} programs.")
-                            for program in programs:
-                                logging.info(f"Program {program['programId']}: {program['title']} - {program['episodeTitle']} ({program['programType']})")
-                        else:
-                            logging.error("[-] No programs found.")
-                        
-                        # Extract and log the schedule entries
-                        schedule_entries = extract_schedule_entries(schedule_data)
-                        if schedule_entries:
-                            logging.info(f"[+] Found {len(schedule_entries)} schedule entries.")
-                            for entry in schedule_entries:
-                                logging.info(f"Event {entry['eventId']}: {entry['startTime']} - {entry['endTime']} (Duration: {entry['duration']} minutes)")
-                        else:
-                            logging.error("[-] No schedule entries found.")
-                        
-                        # Extract and log the cast and crew
-                        cast_and_crew = extract_cast_and_crew(schedule_data)
-                        if cast_and_crew:
-                            logging.info(f"[+] Found {len(cast_and_crew)} cast and crew members.")
-                            for person in cast_and_crew:
-                                logging.info(f"Person {person['personId']}: {person['name']} - {person['role']} as {person['character']}")
-                        else:
-                            logging.error("[-] No cast and crew found.")
-                        
-                        # Extract and log the guide images
-                        guide_images = extract_guide_images(schedule_data, channels)
-                        if guide_images:
-                            logging.info(f"[+] Found {len(guide_images)} guide images.")
-                            for image in guide_images:
-                                if "showCard" in image:
-                                    logging.info(f"Show Card for Event {image['eventId']}: {image['showCard']}")
-                                if "logo" in image:
-                                    logging.info(f"Logo for Channel {image['channelId']}: {image['logo']}")
-                        else:
-                            logging.error("[-] No guide images found.")
-                else:
-                    logging.error("[-] Provider lineup validation failed.")
+                # Generate the .mxf XML
+                mxf_content = generate_mxf(provider_info, lineup_info, channels, schedule_data)
+
+                # Save the XML to a file
+                with open("output.mxf", "w") as f:
+                    f.write(mxf_content)
+                logging.info("[+] Successfully generated output.mxf.")
             else:
                 logging.error("[-] User validation failed.")
-                
         logging.info("[+] End of run.")
-    finally:       
+    finally:
         if session:
             session.close()
             logging.info("[+] Session closed.")
