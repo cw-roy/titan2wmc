@@ -4,6 +4,7 @@ import os
 import logging
 from datetime import datetime
 import xml.etree.ElementTree as ET
+from xml.dom.minidom import parseString
 
 # Load environment variables from .env file
 load_dotenv()
@@ -425,13 +426,18 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
         "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance"
     })
 
-    # Add Provider
-    provider = ET.SubElement(root, "With", attrib={"provider": provider_info["providerId"]})
+    # Add Providers
+    providers = ET.SubElement(root, "Providers")
+    provider = ET.SubElement(providers, "Provider", attrib={
+        "id": str(lineup_info["providerId"]),
+        "name": lineup_info["providerName"],
+        "displayName": lineup_info["providerName"]
+    })
 
     # Add ScheduleEntries
     for channel in schedule_data.get("channels", []):
         service_id = f"s{channel.get('channelIndex', 'unknown')}"  # Use 'unknown' if channelIndex is missing
-        schedule_entries = ET.SubElement(provider, "ScheduleEntries", attrib={"service": service_id})
+        schedule_entries = ET.SubElement(root, "ScheduleEntries", attrib={"service": service_id})
         for day in channel.get("days", []):
             for event in day.get("events", []):
                 ET.SubElement(schedule_entries, "ScheduleEntry", attrib={
@@ -443,7 +449,7 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
                 })
 
     # Add Lineups
-    lineups = ET.SubElement(provider, "Lineups")
+    lineups = ET.SubElement(root, "Lineups")
     lineup = ET.SubElement(lineups, "Lineup", attrib={
         "id": lineup_info["lineupId"],
         "uid": f"!Lineup!{lineup_info['lineupName'].replace(' ', '')}",
@@ -466,8 +472,11 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
             "number": f"{channel['majorChannel']}.{channel['minorChannel']}"
         })
 
-    # Convert to string and return
-    return ET.tostring(root, encoding="unicode", method="xml")
+    # Convert to string and pretty-print
+    raw_xml = ET.tostring(root, encoding="unicode", method="xml")
+    pretty_xml = parseString(raw_xml).toprettyxml(indent="  ")
+
+    return pretty_xml
 
 if __name__ == "__main__":
     try:
@@ -504,12 +513,12 @@ if __name__ == "__main__":
                     logging.error("[-] Failed to fetch schedule. Exiting.")
                     exit(1)
 
-                # Generate the .mxf XML
+                # Generate the .mxf content
                 mxf_content = generate_mxf(provider_info, lineup_info, channels, schedule_data)
 
-                # Save the XML to a file
-                with open("output.mxf", "w") as f:
-                    f.write(mxf_content)
+                # Save to output.mxf
+                with open("output.mxf", "w", encoding="utf-8") as file:
+                    file.write(mxf_content)
                 logging.info("[+] Successfully generated output.mxf.")
             else:
                 logging.error("[-] User validation failed.")
