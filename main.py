@@ -1,3 +1,4 @@
+import json
 import requests
 from dotenv import load_dotenv
 import os
@@ -39,6 +40,26 @@ if not USERNAME or not PASSWORD or not USER_ID:
 DEFAULT_DURATION = "300"
 
 # Utility Functions
+def save_json_to_file(data, filename):
+    """Save JSON data to a file."""
+    try:
+        with open(filename, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=4)
+        logging.info(f"[+] Saved JSON data to {filename}")
+    except Exception as e:
+        logging.error(f"[-] Failed to save JSON to {filename}: {e}")
+
+def load_json(filename):
+    """Load JSON data from a file."""
+    try:
+        with open(filename, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        logging.info(f"[+] Loaded JSON data from {filename}")
+        return data
+    except Exception as e:
+        logging.error(f"[-] Failed to load JSON from {filename}: {e}")
+        return None
+
 def get_current_start_time():
     """Generate start time based on the current date and time."""
     now = datetime.now()  # Get current date and time
@@ -108,6 +129,7 @@ def fetch_provider_info():
     if response.status_code == 200:
         try:
             user_data = response.json()
+            save_json_to_file(user_data, "user.json")  # Save response to user.json
             provider_info = {
                 "providerId": user_data.get("userId", "N/A"),
                 "providerName": user_data.get("loginName", "N/A"),
@@ -133,6 +155,7 @@ def fetch_lineup_info():
     if response.status_code == 200:
         try:
             lineup_data = response.json()
+            save_json_to_file(lineup_data, "lineup.json")  # Save response to lineup.json
 
             # Check if the "lineups" key is present and it's a non-empty list
             if "lineups" in lineup_data and lineup_data["lineups"]:
@@ -171,6 +194,7 @@ def fetch_channel_info(lineup_id):
     if response.status_code == 200:
         try:
             channel_data = response.json()
+            save_json_to_file(channel_data, "channels.json")  # Save response to channels.json
 
             # Check if the "channels" key is present and it's a non-empty list
             if "channels" in channel_data and channel_data["channels"]:
@@ -256,6 +280,7 @@ def fetch_schedule(lineup_id, start_time, duration):
         if response.status_code == 200:
             try:
                 schedule_data = response.json()
+                save_json_to_file(schedule_data, "schedule.json")  # Save response to schedule.json
                 logging.info("[+] Schedule data parsed successfully.")
                 return schedule_data
             except ValueError as e:
@@ -428,25 +453,11 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
 
     # Add Providers
     providers = ET.SubElement(root, "Providers")
-    provider = ET.SubElement(providers, "Provider", attrib={
+    ET.SubElement(providers, "Provider", attrib={
         "id": str(lineup_info["providerId"]),
         "name": lineup_info["providerName"],
         "displayName": lineup_info["providerName"]
     })
-
-    # Add ScheduleEntries
-    for channel in schedule_data.get("channels", []):
-        service_id = f"s{channel.get('channelIndex', 'unknown')}"  # Use 'unknown' if channelIndex is missing
-        schedule_entries = ET.SubElement(root, "ScheduleEntries", attrib={"service": service_id})
-        for day in channel.get("days", []):
-            for event in day.get("events", []):
-                ET.SubElement(schedule_entries, "ScheduleEntry", attrib={
-                    "program": str(event["programId"]),
-                    "startTime": event["startTime"],
-                    "duration": str(event["duration"]),
-                    "isCC": "1" if event.get("isHD", False) else "0",
-                    "audioFormat": "2"  # Example value, adjust as needed
-                })
 
     # Add Lineups
     lineups = ET.SubElement(root, "Lineups")
@@ -471,6 +482,45 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
             "service": f"s{channel_index}",
             "number": f"{channel['majorChannel']}.{channel['minorChannel']}"
         })
+
+    # Add Services
+    services = ET.SubElement(root, "Services")
+    for channel in channels:
+        ET.SubElement(services, "Service", attrib={
+            "id": f"s{channel['channelIndex']}",
+            "uid": f"!Service!{channel['callSign']}",
+            "name": channel["network"],
+            "callSign": channel["callSign"]
+        })
+
+    # Add Programs
+    programs = ET.SubElement(root, "Programs")
+    for channel in schedule_data.get("channels", []):
+        for day in channel.get("days", []):
+            for event in day.get("events", []):
+                ET.SubElement(programs, "Program", attrib={
+                    "id": str(event["programId"]),
+                    "uid": f"!Program!{event['programId']}",
+                    "title": event["title"],
+                    "description": event["description"],
+                    "episodeTitle": event.get("episodeTitle", ""),
+                    "originalAirdate": event.get("originalAirDate", ""),
+                    "keywords": event.get("displayGenre", "")
+                })
+
+    # Add ScheduleEntries
+    for channel in schedule_data.get("channels", []):
+        service_id = f"s{channel.get('channelIndex', 'unknown')}"  # Use 'unknown' if channelIndex is missing
+        schedule_entries = ET.SubElement(root, "ScheduleEntries", attrib={"service": service_id})
+        for day in channel.get("days", []):
+            for event in day.get("events", []):
+                ET.SubElement(schedule_entries, "ScheduleEntry", attrib={
+                    "program": str(event["programId"]),
+                    "startTime": event["startTime"],
+                    "duration": str(event["duration"]),
+                    "isCC": "1" if event.get("isHD", False) else "0",
+                    "audioFormat": "2"  # Example value, adjust as needed
+                })
 
     # Convert to string and pretty-print
     raw_xml = ET.tostring(root, encoding="unicode", method="xml")
