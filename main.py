@@ -33,10 +33,6 @@ session = requests.Session()
 # Set up logging
 logging.basicConfig(filename="titantv.log", level=logging.INFO, format='%(asctime)s - %(message)s')
 
-if not USERNAME or not PASSWORD or not USER_ID:
-    logging.error("[-] Missing required environment variables. Please check your .env file.")
-    exit(1)
-
 DEFAULT_DURATION = "300"
 
 # Utility Functions
@@ -129,7 +125,7 @@ def fetch_provider_info():
     if response.status_code == 200:
         try:
             user_data = response.json()
-            save_json_to_file(user_data, "user.json")  # Save response to user.json
+            save_json_to_file(user_data, "data/user.json")  # Save response to user.json
             provider_info = {
                 "providerId": user_data.get("userId", "N/A"),
                 "providerName": user_data.get("loginName", "N/A"),
@@ -155,18 +151,18 @@ def fetch_lineup_info():
     if response.status_code == 200:
         try:
             lineup_data = response.json()
-            save_json_to_file(lineup_data, "lineup.json")  # Save response to lineup.json
+            save_json_to_file(lineup_data, "data/lineup.json")  # Save response to lineup.json
 
             # Check if the "lineups" key is present and it's a non-empty list
             if "lineups" in lineup_data and lineup_data["lineups"]:
                 lineup_info = lineup_data["lineups"][0]  # Take the first lineup if available
                 lineup_info = {
                     "lineupId": lineup_info.get("lineupId"),
-                    "lineupName": lineup_info.get("lineupName"),
+                    "lineupName": lineup_info.get("lineupName", "Default Lineup"),
                     "timeZone": lineup_info.get("timeZone"),
                     "utcOffset": lineup_info.get("utcOffset"),
                     "providerId": lineup_info.get("providerId"),
-                    "providerName": lineup_info.get("providerName"),
+                    "providerName": lineup_info.get("providerName", "Default Provider"),
                 }
                 if not lineup_info["lineupId"]:
                     logging.error("[-] Missing lineupId in response.")
@@ -194,7 +190,7 @@ def fetch_channel_info(lineup_id):
     if response.status_code == 200:
         try:
             channel_data = response.json()
-            save_json_to_file(channel_data, "channels.json")  # Save response to channels.json
+            save_json_to_file(channel_data, "data/channels.json")  # Save response to channels.json
 
             # Check if the "channels" key is present and it's a non-empty list
             if "channels" in channel_data and channel_data["channels"]:
@@ -280,7 +276,7 @@ def fetch_schedule(lineup_id, start_time, duration):
         if response.status_code == 200:
             try:
                 schedule_data = response.json()
-                save_json_to_file(schedule_data, "schedule.json")  # Save response to schedule.json
+                save_json_to_file(schedule_data, "data/schedule.json")  # Save response to schedule.json
                 logging.info("[+] Schedule data parsed successfully.")
                 return schedule_data
             except ValueError as e:
@@ -451,47 +447,85 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
         "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance"
     })
 
+    # Add Assembly Section
+    assembly = ET.SubElement(root, "Assembly", attrib={
+        "name": "mcepg",
+        "version": "6.0.6000.0",
+        "cultureInfo": "",
+        "publicKey": "0024000004800000940000000602000000240000525341310004000001000100B5FC90E7027F67871E773A8FDE8938C81DD402BA65B9201D60593E96C492651E889CC13F1415EBB53FAC1131AE0BD333C5EE6021672D9718EA31A8AEBD0DA0072F25D87DBA6FC90FFD598ED4DA35E44C398C454307E8E33B8426143DAEC9F596836F97C8F74750E5975C64E2189F45DEF46B2A2B1247ADC3652BF5C308055DA9"
+    })
+    namespace = ET.SubElement(assembly, "NameSpace", attrib={"name": "Microsoft.MediaCenter.Guide"})
+    for type_name in [
+        "Lineup", "Channel", "Service", "ScheduleEntry", "Program", "Keyword",
+        "KeywordGroup", "Person", "ActorRole", "DirectorRole", "WriterRole",
+        "HostRole", "GuestActorRole", "ProducerRole", "GuideImage", "Affiliate",
+        "SeriesInfo", "Season"
+    ]:
+        ET.SubElement(namespace, "Type", attrib={"name": type_name})
+
     # Add Providers
     providers = ET.SubElement(root, "Providers")
     ET.SubElement(providers, "Provider", attrib={
         "id": str(lineup_info["providerId"]),
         "name": lineup_info["providerName"],
-        "displayName": lineup_info["providerName"]
+        "displayName": lineup_info["providerName"],
+        "copyright": "© 2025 TitanTV Inc. All Rights Reserved."
     })
 
-    # Add Lineups
-    lineups = ET.SubElement(root, "Lineups")
-    lineup = ET.SubElement(lineups, "Lineup", attrib={
-        "id": lineup_info["lineupId"],
-        "uid": f"!Lineup!{lineup_info['lineupName'].replace(' ', '')}",
-        "name": lineup_info["lineupName"],
-        "primaryProvider": str(lineup_info["providerId"])
+    # Add Keywords and KeywordGroups
+    keywords = ET.SubElement(root, "Keywords")
+    keyword_groups = ET.SubElement(root, "KeywordGroups")
+    ET.SubElement(keywords, "Keyword", attrib={"id": "k1", "word": "General"})
+    ET.SubElement(keyword_groups, "KeywordGroup", attrib={
+        "uid": "!KeywordGroup!k1",
+        "groupName": "General",
+        "keywords": "k1,k2,k3"
     })
 
-    # Add Channels
-    channels_element = ET.SubElement(lineup, "channels")
+    # Add GuideImages
+    guide_images = ET.SubElement(root, "GuideImages")
     for channel in channels:
-        channel_index = channel.get("channelIndex")
-        if not channel_index:
-            logging.error(f"[-] Missing 'channelIndex' for channel: {channel}")
-            continue  # Skip this channel if 'channelIndex' is missing
+        if channel.get("logo"):
+            ET.SubElement(guide_images, "GuideImage", attrib={
+                "id": f"i{channel['channelIndex']}",
+                "uid": f"!Image!{channel['callSign']}",
+                "imageUrl": channel["logo"]
+            })
 
-        ET.SubElement(channels_element, "Channel", attrib={
-            "uid": f"!Channel!{lineup_info['lineupName'].replace(' ', '')}!{channel_index}",
-            "lineup": lineup_info["lineupId"],
-            "service": f"s{channel_index}",
-            "number": f"{channel['majorChannel']}.{channel['minorChannel']}"
-        })
+    # Add People and Roles
+    people = ET.SubElement(root, "People")
+    for channel in schedule_data.get("channels", []):
+        for day in channel.get("days", []):
+            for event in day.get("events", []):
+                for person in event.get("castAndCrew", []):
+                    person_name = person.get("name")
+                    if not person_name:
+                        continue
+                    person_id = person.get("id", person_name.replace(" ", "_"))
+                    ET.SubElement(people, "Person", attrib={
+                        "id": f"p{person_id}",
+                        "name": person_name,
+                        "uid": f"!Person!{person_name}"
+                    })
 
-    # Add Services
-    services = ET.SubElement(root, "Services")
-    for channel in channels:
-        ET.SubElement(services, "Service", attrib={
-            "id": f"s{channel['channelIndex']}",
-            "uid": f"!Service!{channel['callSign']}",
-            "name": channel["network"],
-            "callSign": channel["callSign"]
-        })
+    # Add SeriesInfos and Seasons
+    series_infos = ET.SubElement(root, "SeriesInfos")
+    seasons = ET.SubElement(root, "Seasons")
+    for channel in schedule_data.get("channels", []):
+        for day in channel.get("days", []):
+            for event in day.get("events", []):
+                if "seriesDescription" in event:
+                    series_id = f"si{event['programId']}"
+                    ET.SubElement(series_infos, "SeriesInfo", attrib={
+                        "id": series_id,
+                        "uid": f"!Series!{event['seriesDescription']}",
+                        "title": event["seriesDescription"]
+                    })
+                    ET.SubElement(seasons, "Season", attrib={
+                        "id": f"sn{event['programId']}",
+                        "uid": f"!Season!{event['programId']}",
+                        "series": series_id
+                    })
 
     # Add Programs
     programs = ET.SubElement(root, "Programs")
@@ -531,48 +565,41 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
 if __name__ == "__main__":
     try:
         logging.info("[+] Start run...")
-        session = login()
-        if session:
-            logging.info("[+] Ready to proceed with user and provider validation.")
-            
-            # Validate user
-            if validate_user():
-                # Fetch provider information
-                provider_info = fetch_provider_info()
-                if not provider_info:
-                    logging.error("[-] Failed to fetch provider information. Exiting.")
-                    exit(1)
-                
-                # Fetch lineup information
-                lineup_info = fetch_lineup_info()
-                if not lineup_info:
-                    logging.error("[-] Failed to fetch lineup information. Exiting.")
-                    exit(1)
-                
-                # Fetch channel information
-                channels = fetch_channel_info(lineup_info['lineupId'])
-                if not channels:
-                    logging.error("[-] Failed to fetch channel information. Exiting.")
-                    exit(1)
+        session = requests.Session()
 
-                # Fetch schedule
-                start_time = get_current_start_time()
-                duration = DEFAULT_DURATION
-                schedule_data = fetch_schedule(lineup_info['lineupId'], start_time, duration)
-                if not schedule_data:
-                    logging.error("[-] Failed to fetch schedule. Exiting.")
-                    exit(1)
+        # Fetch provider information
+        provider_info = fetch_provider_info()
+        if not provider_info:
+            logging.error("[-] Failed to fetch provider information. Exiting.")
+            exit(1)
 
-                # Generate the .mxf content
-                mxf_content = generate_mxf(provider_info, lineup_info, channels, schedule_data)
+        # Fetch lineup information
+        lineup_info = fetch_lineup_info()
+        if not lineup_info:
+            logging.error("[-] Failed to fetch lineup information. Exiting.")
+            exit(1)
 
-                # Save to output.mxf
-                with open("output.mxf", "w", encoding="utf-8") as file:
-                    file.write(mxf_content)
-                logging.info("[+] Successfully generated output.mxf.")
-            else:
-                logging.error("[-] User validation failed.")
-        logging.info("[+] End of run.")
+        # Fetch channel information
+        channels = fetch_channel_info(lineup_info["lineupId"])
+        if not channels:
+            logging.error("[-] Failed to fetch channel information. Exiting.")
+            exit(1)
+
+        # Fetch schedule
+        start_time = get_current_start_time()
+        duration = DEFAULT_DURATION
+        schedule_data = fetch_schedule(lineup_info["lineupId"], start_time, duration)
+        if not schedule_data:
+            logging.error("[-] Failed to fetch schedule. Exiting.")
+            exit(1)
+
+        # Generate the .mxf content
+        mxf_content = generate_mxf(provider_info, lineup_info, channels, schedule_data)
+
+        # Save to output.mxf
+        with open("output.mxf", "w", encoding="utf-8") as file:
+            file.write(mxf_content)
+        logging.info("[+] Successfully generated output.mxf.")
     finally:
         if session:
             session.close()
