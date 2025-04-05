@@ -6,6 +6,9 @@ import logging
 from datetime import datetime
 import xml.etree.ElementTree as ET
 from xml.dom.minidom import parseString
+from auth import login, validate_user, validate_lineup  # Import the functions from auth.py
+from fetch import fetch_provider_info, fetch_lineup_info, fetch_channel_info, fetch_schedule  # Import the functions from fetch.py
+from utils import load_json  # Import utility function for loading JSON
 
 # Load environment variables from .env file
 load_dotenv()
@@ -13,6 +16,7 @@ load_dotenv()
 # TitanTV API Endpoints
 USER_URL = "https://titantv.com/api/user/{user_id}"
 LINEUP_URL = "https://titantv.com/api/lineup/{user_id}"
+CHANNEL_URL = "https://titantv.com/api/channel/{user_id}/{lineup_id}"
 SCHEDULE_URL = "https://titantv.com/api/schedule/{user_id}/{lineup_id}/{start_time}/{duration}"
 
 # Retrieve credentials and user ID from environment variables
@@ -62,172 +66,6 @@ def get_current_start_time():
     start_time = now.strftime("%Y%m%d%H%M")  # Format the date as 'YYYYMMDDHHMM'
     return start_time
 
-# Core Functions
-def login():
-    """Logs into TitanTV and prints out cookies and response content to help debug UUID."""
-    if not USERNAME or not PASSWORD:
-        print("[-] Missing credentials. Please set TITANTV_USERNAME and TITANTV_PASSWORD in the .env file.")
-        logging.error("Missing credentials.")
-        return None
-
-    payload = {"loginName": USERNAME, "password": PASSWORD}
-
-    login_url = "https://titantv.com/api/login"
-    response = session.post(login_url, json=payload, headers=HEADERS)
-
-    if response.status_code == 200 and "Set-Cookie" in response.headers:
-        logging.info("[+] Login successful!")
-        return session
-    else:
-        logging.error("[-] Login failed.")
-        logging.error(f"Response: {response.text}")
-        return None
-
-def validate_user():
-    """Fetches user data to validate user ID and lineup."""
-    logging.info("[+] Validating user ID...")
-
-    # Construct URL dynamically based on user ID
-    url = USER_URL.format(user_id=USER_ID)
-    response = session.get(url, headers=HEADERS)
-
-    if response.status_code == 200:
-        logging.info("[+] User validated successfully.")
-        return True
-    else:
-        logging.error(f"[-] Failed to validate user ID. Status code: {response.status_code}")
-        logging.error(f"[-] Response content: {response.text}")
-        return False
-
-def validate_lineup():
-    """Fetches lineup data to validate lineup ID."""
-    logging.info("[+] Validating provider lineup...")
-
-    # Construct URL dynamically based on user ID
-    url = LINEUP_URL.format(user_id=USER_ID)
-    response = session.get(url, headers=HEADERS)
-
-    if response.status_code == 200:
-        logging.info("[+] Provider lineup validated successfully.")
-        return True
-    else:
-        logging.error(f"[-] Failed to validate lineup. Status code: {response.status_code}")
-        logging.error(f"[-] Response content: {response.text}")
-        return False
-
-def fetch_provider_info():
-    """Fetch provider information from the TitanTV API."""
-    logging.info("[+] Fetching provider information...")
-
-    url = USER_URL.format(user_id=USER_ID)
-    response = session.get(url, headers=HEADERS)
-
-    if response.status_code == 200:
-        try:
-            user_data = response.json()
-            save_json_to_file(user_data, "data/user.json")  # Save response to user.json
-            provider_info = {
-                "providerId": user_data.get("userId", "N/A"),
-                "providerName": user_data.get("loginName", "N/A"),
-            }
-            logging.info(f"[+] Provider information fetched successfully: {provider_info}")
-            logging.info(f"[+] Provider Info: {provider_info}")
-            return provider_info
-        except ValueError as e:
-            logging.error(f"[-] Error parsing JSON: {e}")
-            return None
-    else:
-        logging.error(f"[-] Failed to fetch provider information. Status code: {response.status_code}")
-        logging.error(f"[-] Response content: {response.text}")
-        return None
-
-def fetch_lineup_info():
-    """Fetch lineup information from the TitanTV API."""
-    logging.info("[+] Fetching lineup information...")
-
-    url = LINEUP_URL.format(user_id=USER_ID)
-    response = session.get(url, headers=HEADERS)
-
-    if response.status_code == 200:
-        try:
-            lineup_data = response.json()
-            save_json_to_file(lineup_data, "data/lineup.json")  # Save response to lineup.json
-
-            # Check if the "lineups" key is present and it's a non-empty list
-            if "lineups" in lineup_data and lineup_data["lineups"]:
-                lineup_info = lineup_data["lineups"][0]  # Take the first lineup if available
-                lineup_info = {
-                    "lineupId": lineup_info.get("lineupId"),
-                    "lineupName": lineup_info.get("lineupName", "Default Lineup"),
-                    "timeZone": lineup_info.get("timeZone"),
-                    "utcOffset": lineup_info.get("utcOffset"),
-                    "providerId": lineup_info.get("providerId"),
-                    "providerName": lineup_info.get("providerName", "Default Provider"),
-                }
-                if not lineup_info["lineupId"]:
-                    logging.error("[-] Missing lineupId in response.")
-                    return None
-                logging.info(f"[+] Lineup information fetched successfully: {lineup_info}")
-                return lineup_info
-            else:
-                logging.error("[-] No lineups found in response.")
-                return None
-        except ValueError as e:
-            logging.error(f"[-] Error parsing JSON: {e}")
-            return None
-    else:
-        logging.error(f"[-] Failed to fetch lineup information. Status code: {response.status_code}")
-        logging.error(f"[-] Response content: {response.text}")
-        return None
-
-def fetch_channel_info(lineup_id):
-    """Fetch channel information from the TitanTV API."""
-    logging.info("[+] Fetching channel information...")
-
-    url = f"https://titantv.com/api/channel/{USER_ID}/{lineup_id}"
-    response = session.get(url, headers=HEADERS)
-
-    if response.status_code == 200:
-        try:
-            channel_data = response.json()
-            save_json_to_file(channel_data, "data/channels.json")  # Save response to channels.json
-
-            # Check if the "channels" key is present and it's a non-empty list
-            if "channels" in channel_data and channel_data["channels"]:
-                channels = []
-                for channel in channel_data["channels"]:
-                    if "channelIndex" not in channel:
-                        logging.error(f"[-] Missing 'channelIndex' in channel data: {channel}")
-                        continue  # Skip this channel if 'channelIndex' is missing
-
-                    channel_info = {
-                        "channelId": channel.get("channelId"),
-                        "channelIndex": channel.get("channelIndex"),
-                        "majorChannel": channel.get("majorChannel"),
-                        "minorChannel": channel.get("minorChannel"),
-                        "rfChannel": channel.get("rfChannel"),
-                        "callSign": channel.get("callSign"),
-                        "network": channel.get("network"),
-                        "description": channel.get("description"),
-                        "hdCapable": channel.get("hdCapable"),
-                        "logo": channel.get("logo"),
-                    }
-
-                    channels.append(channel_info)
-
-                logging.info(f"[+] Channel information fetched successfully. Found {len(channels)} channels.")
-                return channels
-            else:
-                logging.error("[-] No channels found in response.")
-                return None
-        except ValueError as e:
-            logging.error(f"[-] Error parsing JSON: {e}")
-            return None
-    else:
-        logging.error(f"[-] Failed to fetch channel information. Status code: {response.status_code}")
-        logging.error(f"[-] Response content: {response.text}")
-        return None
-
 def extract_programs(schedule_data):
     """Extracts and processes program data from the fetched schedule."""
     if not schedule_data or "channels" not in schedule_data:
@@ -265,34 +103,6 @@ def extract_programs(schedule_data):
         logging.error("[-] No 'channels' found in schedule data.")
     
     return programs
-
-def fetch_schedule(lineup_id, start_time, duration):
-    """Fetches TV schedule for the given lineup and time range."""
-    logging.info("[+] Fetching schedule...")
-    url = SCHEDULE_URL.format(user_id=USER_ID, lineup_id=lineup_id, start_time=start_time, duration=duration)
-    
-    for attempt in range(3):  # Retry up to 3 times
-        response = session.get(url, headers=HEADERS)
-        if response.status_code == 200:
-            try:
-                schedule_data = response.json()
-                save_json_to_file(schedule_data, "data/schedule.json")  # Save response to schedule.json
-                logging.info("[+] Schedule data parsed successfully.")
-                return schedule_data
-            except ValueError as e:
-                logging.error(f"[-] Error parsing JSON: {e}")
-                return None
-        elif response.status_code == 401:
-            logging.error("[-] Unauthorized. Check your credentials.")
-            return None
-        elif response.status_code >= 500:
-            logging.warning(f"[!] Server error (status {response.status_code}). Retrying...")
-        else:
-            logging.error(f"[-] Failed to fetch schedule. Status code: {response.status_code}")
-            logging.error(f"[-] Response content: {response.text}")
-            return None
-    logging.error("[-] All retries failed.")
-    return None
 
 def extract_schedule_entries(schedule_data):
     """Extracts and processes schedule entries from the fetched schedule."""
@@ -565,41 +375,55 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
 if __name__ == "__main__":
     try:
         logging.info("[+] Start run...")
-        session = requests.Session()
+
+        # Login
+        session = login(session, USERNAME, PASSWORD, HEADERS)
+        if not session:
+            logging.error("[-] Login failed. Exiting.")
+            exit(1)
+
+        # Validate user
+        user_url = USER_URL.format(user_id=USER_ID)
+        if not validate_user(session, user_url, HEADERS):
+            logging.error("[-] User validation failed. Exiting.")
+            exit(1)
+
+        # Validate lineup
+        lineup_url = LINEUP_URL.format(user_id=USER_ID)
+        if not validate_lineup(session, lineup_url, HEADERS):
+            logging.error("[-] Lineup validation failed. Exiting.")
+            exit(1)
 
         # Fetch provider information
-        provider_info = fetch_provider_info()
+        provider_info = fetch_provider_info(session, user_url, HEADERS)
         if not provider_info:
             logging.error("[-] Failed to fetch provider information. Exiting.")
             exit(1)
 
         # Fetch lineup information
-        lineup_info = fetch_lineup_info()
+        lineup_info = fetch_lineup_info(session, lineup_url, HEADERS)
         if not lineup_info:
             logging.error("[-] Failed to fetch lineup information. Exiting.")
             exit(1)
 
         # Fetch channel information
-        channels = fetch_channel_info(lineup_info["lineupId"])
+        channel_url = CHANNEL_URL.format(user_id=USER_ID, lineup_id=lineup_info["lineupId"])
+        channels = fetch_channel_info(session, channel_url, HEADERS)
         if not channels:
             logging.error("[-] Failed to fetch channel information. Exiting.")
             exit(1)
 
         # Fetch schedule
-        start_time = get_current_start_time()
-        duration = DEFAULT_DURATION
-        schedule_data = fetch_schedule(lineup_info["lineupId"], start_time, duration)
+        start_time = datetime.now().strftime("%Y%m%d%H%M")
+        schedule_url = SCHEDULE_URL.format(user_id=USER_ID, lineup_id=lineup_info["lineupId"], start_time=start_time, duration="300")
+        schedule_data = fetch_schedule(session, schedule_url, HEADERS)
         if not schedule_data:
             logging.error("[-] Failed to fetch schedule. Exiting.")
             exit(1)
 
-        # Generate the .mxf content
-        mxf_content = generate_mxf(provider_info, lineup_info, channels, schedule_data)
+        logging.info("[+] Successfully fetched all data. Proceeding with processing...")
+        # Continue with processing and generating the MXF file...
 
-        # Save to output.mxf
-        with open("output.mxf", "w", encoding="utf-8") as file:
-            file.write(mxf_content)
-        logging.info("[+] Successfully generated output.mxf.")
     finally:
         if session:
             session.close()
