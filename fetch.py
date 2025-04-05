@@ -1,4 +1,5 @@
 import logging
+import requests
 from utils import save_json_to_file  # Import utility function for saving JSON
 
 def fetch_provider_info(session, user_url, headers):
@@ -97,17 +98,37 @@ def fetch_channel_info(session, channel_url, headers):
 def fetch_schedule(session, schedule_url, headers):
     """Fetch TV schedule for the given lineup and time range."""
     logging.info("[+] Fetching schedule...")
-    response = session.get(schedule_url, headers=headers)
-
-    if response.status_code == 200:
-        try:
-            schedule_data = response.json()
-            save_json_to_file(schedule_data, "schedule.json")  # Save to 'data/schedule.json'
-            return schedule_data
-        except ValueError as e:
-            logging.error(f"[-] Error parsing JSON: {e}")
+    
+    try:
+        response = session.get(schedule_url, headers=headers)
+        response.raise_for_status()
+        
+        schedule_data = response.json()
+        if not schedule_data.get("channels"):
+            logging.error("[-] No channel data in schedule response")
             return None
-    else:
-        logging.error(f"[-] Failed to fetch schedule. Status code: {response.status_code}")
-        logging.error(f"[-] Response content: {response.text}")
+
+        # Verify we have events data
+        has_events = False
+        for channel in schedule_data["channels"]:
+            if channel.get("days"):
+                for day in channel["days"]:
+                    if day.get("events"):
+                        has_events = True
+                        break
+            if has_events:
+                break
+
+        if not has_events:
+            logging.error("[-] No events found in schedule data")
+            return None
+
+        save_json_to_file(schedule_data, "schedule.json")
+        return schedule_data
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"[-] Failed to fetch schedule: {e}")
+        return None
+    except ValueError as e:
+        logging.error(f"[-] Error parsing schedule JSON: {e}")
         return None

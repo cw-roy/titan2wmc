@@ -1,7 +1,13 @@
 import logging
 import xml.etree.ElementTree as ET
 from xml.dom.minidom import parseString
-from extract import extract_programs, extract_schedule_entries, extract_cast_and_crew, extract_guide_images
+from extract import (
+    extract_programs, 
+    extract_schedule_entries, 
+    extract_cast_and_crew, 
+    extract_guide_images,
+    extract_series_info  # Add this import
+)
 
 def safe_str(value):
     """Convert value to string, handling None values."""
@@ -46,40 +52,61 @@ def add_services_section(with_section, channels):
     """Add Services section with channel data."""
     services = ET.SubElement(with_section, "Services")
     for channel in channels:
-        if channel.get("callSign"):
+        if channel.get("callSign") and channel.get("channelIndex"):
             ET.SubElement(services, "Service", attrib={
                 "id": f"s{safe_str(channel['channelIndex'])}",
                 "uid": f"!Service!{safe_str(channel['callSign'])}",
                 "name": safe_str(channel.get("network", "")),
-                "callSign": safe_str(channel['callSign'])
+                "callSign": safe_str(channel['callSign']),
+                "affiliate": f"!Affiliate!{safe_str(channel.get('network', ''))}"
             })
 
-def add_schedule_entries_section(with_section, schedule_data):
+def add_schedule_entries_section(with_section, schedule_data, processed_data):
     """Add ScheduleEntries section with program schedule data."""
     schedule_entries_dict = {}
     
-    # First, group entries by service
-    for entry in extract_schedule_entries(schedule_data):
+    for entry in processed_data["schedule_entries"]:
         service_id = entry.get("service")
-        if service_id:
-            if service_id not in schedule_entries_dict:
-                schedule_entries_dict[service_id] = []
-            schedule_entries_dict[service_id].append(entry)
-
-    # Then create ScheduleEntries sections for each service
-    for service_id, entries in schedule_entries_dict.items():
-        schedule_entries = ET.SubElement(with_section, "ScheduleEntries", 
-                                       attrib={"service": service_id})
-        for entry in entries:
-            ET.SubElement(schedule_entries, "ScheduleEntry", attrib={
-                "program": safe_str(entry.get("program")),
-                "startTime": safe_str(entry.get("startTime")),
-                "duration": safe_str(entry.get("duration")),
+        if not service_id:
+            continue
+            
+        if service_id not in schedule_entries_dict:
+            schedule_entries_dict[service_id] = ET.SubElement(
+                with_section, 
+                "ScheduleEntries",
+                attrib={"service": service_id}
+            )
+            
+        if entry.get("program") and entry.get("startTime"):
+            ET.SubElement(schedule_entries_dict[service_id], "ScheduleEntry", attrib={
+                "program": safe_str(entry["program"]),
+                "startTime": safe_str(entry["startTime"]),
+                "duration": safe_str(entry["duration"]),
                 "isCC": safe_str(entry.get("isCC", "0")),
                 "audioFormat": safe_str(entry.get("audioFormat", "2"))
             })
 
-def generate_mxf(provider_info, lineup_info, channels, schedule_data):
+def add_lineups_section(with_section, lineup_info, channels):
+    """Add Lineups section with channel mappings."""
+    lineups = ET.SubElement(with_section, "Lineups")
+    lineup = ET.SubElement(lineups, "Lineup", attrib={
+        "id": safe_str(lineup_info["lineupId"]),
+        "uid": f"!Lineup!{safe_str(lineup_info['lineupName'])}",
+        "name": safe_str(lineup_info["lineupName"])
+    })
+    
+    channels_element = ET.SubElement(lineup, "channels")
+    for channel in channels:
+        if channel.get("channelIndex"):
+            ET.SubElement(channels_element, "Channel", attrib={
+                "uid": f"!Channel!{safe_str(lineup_info['lineupName'])}!{safe_str(channel['channelIndex'])}",
+                "lineup": safe_str(lineup_info["lineupId"]),
+                "service": f"s{safe_str(channel['channelIndex'])}",
+                "number": f"{safe_str(channel.get('majorChannel', ''))}." \
+                         f"{safe_str(channel.get('minorChannel', ''))}"
+            })
+
+def generate_mxf(provider_info, lineup_info, channels, schedule_data, processed_data):
     """Generate the .mxf XML structure."""
     root = ET.Element("MXF", attrib={
         "xmlns:sql": "urn:schemas-microsoft-com:XML-sql",
@@ -179,20 +206,18 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
         "keywords": "k100,k101,k102,k103,k104,k105,k106,k107,k108,k109,k110,k111,k112,k113"
     })
 
-    # Add GuideImages section
+    # Add GuideImages section - Use processed data
     guide_images = ET.SubElement(with_section, "GuideImages")
-    for channel in channels:
-        if channel.get("logo"):
-            ET.SubElement(guide_images, "GuideImage", attrib={
-                "id": f"i{safe_str(channel['channelIndex'])}",
-                "uid": f"!Image!{safe_str(channel['callSign'])}",
-                "imageUrl": safe_str(channel['logo'])
-            })
+    for image in processed_data["guide_images"]:
+        ET.SubElement(guide_images, "GuideImage", attrib={
+            "id": safe_str(image["id"]),
+            "uid": safe_str(image["uid"]),
+            "imageUrl": safe_str(image["imageUrl"])
+        })
 
-    # Add People section
+    # Add People section - Use processed data instead of direct extraction
     people = ET.SubElement(with_section, "People")
-    cast_and_crew = extract_cast_and_crew(schedule_data)
-    for person in cast_and_crew:
+    for person in processed_data["cast_and_crew"]:  # Changed from direct extraction
         if person.get("name"):
             ET.SubElement(people, "Person", attrib={
                 "id": f"p{safe_str(person['personId'])}",
@@ -201,20 +226,32 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
             })
 
     # Add SeriesInfos section
-    ET.SubElement(with_section, "SeriesInfos")
+    series_infos = ET.SubElement(with_section, "SeriesInfos")
+    for series in processed_data.get("series_info", []):
+        ET.SubElement(series_infos, "SeriesInfo", attrib={
+            "id": safe_str(series["id"]),
+            "uid": safe_str(series["uid"]),
+            "title": safe_str(series["title"]),
+            "shortTitle": safe_str(series["shortTitle"]),
+            "description": safe_str(series["description"]),
+            "shortDescription": safe_str(series["shortDescription"]),
+            "startAirdate": safe_str(series["startAirdate"])
+        })
 
     # Add Seasons section
     ET.SubElement(with_section, "Seasons")
 
-    # Add Programs section
+    # Add Programs section with processed program data
     programs = ET.SubElement(with_section, "Programs")
-    for program in extract_programs(schedule_data):
+    for program in processed_data["programs"]:
         if program.get("title"):
-            ET.SubElement(programs, "Program", attrib={
+            program_element = ET.SubElement(programs, "Program", attrib={
                 "id": safe_str(program["programId"]),
                 "uid": f"!Program!{safe_str(program['programId'])}",
                 "title": safe_str(program["title"]),
                 "description": safe_str(program["description"]),
+                "shortDescription": safe_str(program.get("shortDescription", "")),
+                "episodeTitle": safe_str(program.get("episodeTitle", "")),
                 "originalAirdate": safe_str(program["originalAirDate"]),
                 "keywords": safe_str(program["keywords"]),
                 "isSeries": safe_str(program["isSeries"]),
@@ -224,31 +261,54 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data):
     # Add Affiliates section
     ET.SubElement(with_section, "Affiliates")
 
-    # Add Services section
-    add_services_section(with_section, channels)
+    # Add Services section with channel data
+    services = ET.SubElement(with_section, "Services")
+    for channel in channels:
+        if channel.get("callSign"):
+            ET.SubElement(services, "Service", attrib={
+                "id": f"s{safe_str(channel['channelIndex'])}",
+                "uid": f"!Service!{safe_str(channel['callSign'])}",
+                "name": safe_str(channel.get("network", "")),
+                "callSign": safe_str(channel['callSign'])
+            })
 
-    # Add ScheduleEntries section
-    add_schedule_entries_section(with_section, schedule_data)
+    # Add ScheduleEntries section with processed schedule entries
+    schedule_entries_dict = {}
+    for entry in processed_data["schedule_entries"]:
+        service_id = entry.get("service")
+        if service_id:
+            if service_id not in schedule_entries_dict:
+                schedule_entries_dict[service_id] = ET.SubElement(
+                    with_section, 
+                    "ScheduleEntries",
+                    attrib={"service": service_id}
+                )
+            ET.SubElement(schedule_entries_dict[service_id], "ScheduleEntry", attrib={
+                "program": safe_str(entry["program"]),
+                "startTime": safe_str(entry["startTime"]),
+                "duration": safe_str(entry["duration"]),
+                "isCC": safe_str(entry.get("isCC", "0")),
+                "audioFormat": safe_str(entry.get("audioFormat", "2"))
+            })
 
     # Add Lineups section
     lineups = ET.SubElement(with_section, "Lineups")
-    if lineup_info.get("lineupId"):
-        lineup = ET.SubElement(lineups, "Lineup", attrib={
-            "id": safe_str(lineup_info["lineupId"]),
-            "uid": f"!Lineup!{safe_str(lineup_info['lineupName'])}",
-            "name": safe_str(lineup_info["lineupName"])
-        })
-        
-        channels_element = ET.SubElement(lineup, "channels")
-        for channel in channels:
-            if channel.get("channelIndex"):
-                ET.SubElement(channels_element, "Channel", attrib={
-                    "uid": f"!Channel!{safe_str(lineup_info['lineupName'])}!{safe_str(channel['channelIndex'])}",
-                    "lineup": safe_str(lineup_info["lineupId"]),
-                    "service": f"s{safe_str(channel['channelIndex'])}",
-                    "number": f"{safe_str(channel.get('majorChannel', ''))}." \
-                             f"{safe_str(channel.get('minorChannel', ''))}"
-                })
+    lineup = ET.SubElement(lineups, "Lineup", attrib={
+        "id": safe_str(lineup_info["lineupId"]),
+        "uid": f"!Lineup!{safe_str(lineup_info['lineupName'])}",
+        "name": safe_str(lineup_info["lineupName"])
+    })
+
+    channels_element = ET.SubElement(lineup, "channels")
+    for channel in channels:
+        if channel.get("channelIndex"):
+            ET.SubElement(channels_element, "Channel", attrib={
+                "uid": f"!Channel!{safe_str(lineup_info['lineupName'])}!{safe_str(channel['channelIndex'])}",
+                "lineup": safe_str(lineup_info["lineupId"]),
+                "service": f"s{safe_str(channel['channelIndex'])}",
+                "number": f"{safe_str(channel.get('majorChannel', ''))}." \
+                         f"{safe_str(channel.get('minorChannel', ''))}"
+            })
 
     # Convert to string and pretty-print
     raw_xml = ET.tostring(root, encoding="unicode", method="xml")

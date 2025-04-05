@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from auth import login, validate_user, validate_lineup
 from fetch import fetch_provider_info, fetch_lineup_info, fetch_channel_info, fetch_schedule
-from extract import extract_programs, extract_schedule_entries, extract_cast_and_crew, extract_guide_images
+from extract import extract_programs, extract_schedule_entries, extract_cast_and_crew, extract_guide_images, extract_series_info
 from processing import generate_mxf
 
 # Load environment variables from .env file
@@ -32,7 +32,8 @@ HEADERS = {
 # Set up logging
 logging.basicConfig(filename="titantv.log", level=logging.INFO, format="%(asctime)s - %(message)s")
 
-DEFAULT_DURATION = "300"
+# Update DEFAULT_DURATION to fetch more data
+DEFAULT_DURATION = "1440"  # 24 hours instead of 5 hours
 
 
 def login_and_validate(session):
@@ -84,37 +85,43 @@ def fetch_data(session, user_url, lineup_url):
         logging.error("[-] Failed to fetch channel information. Exiting.")
         exit(1)
 
-    # Fetch schedule
+    # Fetch schedule with 24 hours of data
     start_time = datetime.now().strftime("%Y%m%d%H%M")
-    schedule_url = SCHEDULE_URL.format(user_id=USER_ID, lineup_id=lineup_info["lineupId"], start_time=start_time, duration=DEFAULT_DURATION)
+    schedule_url = SCHEDULE_URL.format(
+        user_id=USER_ID,
+        lineup_id=lineup_info["lineupId"],
+        start_time=start_time,
+        duration="1440"  # 24 hours
+    )
     schedule_data = fetch_schedule(session, schedule_url, HEADERS)
     if not schedule_data:
         logging.error("[-] Failed to fetch schedule. Exiting.")
         exit(1)
 
-    logging.info("[+] Data fetched successfully.")
     return provider_info, lineup_info, channels, schedule_data
 
 
 def process_data(schedule_data, channels):
-    """Processes the fetched data to extract programs, schedule entries, cast and crew, and guide images."""
+    """Processes the fetched data."""
     logging.info("[+] Processing data...")
-
-    programs = extract_programs(schedule_data)
-    schedule_entries = extract_schedule_entries(schedule_data)
-    cast_and_crew = extract_cast_and_crew(schedule_data)
-    guide_images = extract_guide_images(schedule_data, channels)
-
-    logging.info("[+] Data processed successfully.")
-    return programs, schedule_entries, cast_and_crew, guide_images
+    return {
+        "programs": extract_programs(schedule_data),
+        "schedule_entries": extract_schedule_entries(schedule_data),
+        "cast_and_crew": extract_cast_and_crew(schedule_data),
+        "guide_images": extract_guide_images(schedule_data, channels),
+        "series_info": extract_series_info(schedule_data)  # Add this line
+    }
 
 
 def generate_output(provider_info, lineup_info, channels, schedule_data):
     """Generates the MXF file and saves it."""
     logging.info("[+] Generating MXF file...")
-
-    # Generate the MXF file
-    mxf_content = generate_mxf(provider_info, lineup_info, channels, schedule_data)
+    
+    # Process the data first
+    processed_data = process_data(schedule_data, channels)
+    
+    # Generate the MXF file with processed data
+    mxf_content = generate_mxf(provider_info, lineup_info, channels, schedule_data, processed_data)
 
     # Save the MXF file
     with open("output.mxf", "w", encoding="utf-8") as file:
@@ -126,8 +133,6 @@ def generate_output(provider_info, lineup_info, channels, schedule_data):
 if __name__ == "__main__":
     try:
         logging.info("[+] Start run...")
-
-        # Start a session
         session = requests.Session()
 
         # Step 1: Login and validate
@@ -136,10 +141,7 @@ if __name__ == "__main__":
         # Step 2: Fetch data
         provider_info, lineup_info, channels, schedule_data = fetch_data(session, user_url, lineup_url)
 
-        # Step 3: Process data
-        process_data(schedule_data, channels)
-
-        # Step 4: Generate output
+        # Step 3: Process data and generate output in one step
         generate_output(provider_info, lineup_info, channels, schedule_data)
 
     finally:
