@@ -1,13 +1,5 @@
 import logging
-import xml.etree.ElementTree as ET
-from xml.dom.minidom import parseString
-from extract import (
-    extract_programs, 
-    extract_schedule_entries, 
-    extract_cast_and_crew, 
-    extract_guide_images,
-    extract_series_info  # Add this import
-)
+from lxml import etree  # type: ignore
 
 def safe_str(value):
     """Convert value to string, handling None values."""
@@ -50,10 +42,10 @@ def extract_listings(schedule_data):
 
 def add_services_section(with_section, channels):
     """Add Services section with channel data."""
-    services = ET.SubElement(with_section, "Services")
+    services = etree.SubElement(with_section, "Services")
     for channel in channels:
         if channel.get("callSign") and channel.get("channelIndex"):
-            ET.SubElement(services, "Service", attrib={
+            etree.SubElement(services, "Service", attrib={
                 "id": f"s{safe_str(channel['channelIndex'])}",
                 "uid": f"!Service!{safe_str(channel['callSign'])}",
                 "name": safe_str(channel.get("network", "")),
@@ -71,14 +63,14 @@ def add_schedule_entries_section(with_section, schedule_data, processed_data):
             continue
             
         if service_id not in schedule_entries_dict:
-            schedule_entries_dict[service_id] = ET.SubElement(
+            schedule_entries_dict[service_id] = etree.SubElement(
                 with_section, 
                 "ScheduleEntries",
                 attrib={"service": service_id}
             )
             
         if entry.get("program") and entry.get("startTime"):
-            ET.SubElement(schedule_entries_dict[service_id], "ScheduleEntry", attrib={
+            etree.SubElement(schedule_entries_dict[service_id], "ScheduleEntry", attrib={
                 "program": safe_str(entry["program"]),
                 "startTime": safe_str(entry["startTime"]),
                 "duration": safe_str(entry["duration"]),
@@ -88,147 +80,46 @@ def add_schedule_entries_section(with_section, schedule_data, processed_data):
 
 def add_lineups_section(with_section, lineup_info, channels):
     """Add Lineups section with channel mappings."""
-    lineups = ET.SubElement(with_section, "Lineups")
-    lineup = ET.SubElement(lineups, "Lineup", attrib={
-        "id": safe_str(lineup_info["lineupId"]),
+    lineups = etree.SubElement(with_section, "Lineups")
+    lineup = etree.SubElement(lineups, "Lineup", attrib={
+        "id": "l1",  # Always "l1" as per the documentation
         "uid": f"!Lineup!{safe_str(lineup_info['lineupName'])}",
         "name": safe_str(lineup_info["lineupName"])
     })
     
-    channels_element = ET.SubElement(lineup, "channels")
+    channels_element = etree.SubElement(lineup, "channels")
     for channel in channels:
         if channel.get("channelIndex"):
-            ET.SubElement(channels_element, "Channel", attrib={
-                "uid": f"!Channel!{safe_str(lineup_info['lineupName'])}!{safe_str(channel['channelIndex'])}",
-                "lineup": safe_str(lineup_info["lineupId"]),
-                "service": f"s{safe_str(channel['channelIndex'])}",
-                "number": f"{safe_str(channel.get('majorChannel', ''))}." \
-                         f"{safe_str(channel.get('minorChannel', ''))}"
+            major_channel = safe_str(channel.get("majorChannel", -1))
+            minor_channel = safe_str(channel.get("minorChannel", 0))
+            channel_uid = f"!Channel!{safe_str(lineup_info['lineupName'])}!{major_channel}.{minor_channel}"
+            service_id = f"s{safe_str(channel['channelIndex'])}"
+            match_name = safe_str(channel.get("callSign", ""))
+
+            etree.SubElement(channels_element, "Channel", attrib={
+                "uid": channel_uid,
+                "lineup": "l1",
+                "service": service_id,
+                "number": f"{major_channel}.{minor_channel}",
+                "matchName": match_name
             })
 
-def generate_mxf(provider_info, lineup_info, channels, schedule_data, processed_data):
-    """Generate the .mxf XML structure."""
-    root = ET.Element("MXF", attrib={
-        "xmlns:sql": "urn:schemas-microsoft-com:XML-sql",
-        "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance"
-    })
-
-    # Add Assembly Section
-    assembly_mcepg = ET.SubElement(root, "Assembly", attrib={
-        "name": "mcepg",
-        "version": "6.0.6000.0",
-        "cultureInfo": "",
-        "publicKey": "0024000004800000940000000602000000240000525341310004000001000100B5FC90E7027F67871E773A8FDE8938C81DD402BA65B9201D60593E96C492651E889CC13F1415EBB53FAC1131AE0BD333C5EE6021672D9718EA31A8AEBD0DA0072F25D87DBA6FC90FFD598ED4DA35E44C398C454307E8E33B8426143DAEC9F596836F97C8F74750E5975C64E2189F45DEF46B2A2B1247ADC3652BF5C308055DA9"
-    })
-
-    # Add mcepg namespace with proper Type definitions
-    namespace = ET.SubElement(assembly_mcepg, "NameSpace", attrib={"name": "Microsoft.MediaCenter.Guide"})
-    type_definitions = [
-        ("Lineup", {}),
-        ("Channel", {"parentFieldName": "lineup"}),
-        ("Service", {}),
-        ("ScheduleEntry", {"groupName": "ScheduleEntries"}),
-        ("Program", {}),
-        ("Keyword", {}),
-        ("KeywordGroup", {}),
-        ("Person", {"groupName": "People"}),
-        ("ActorRole", {"parentFieldName": "program"}),
-        ("DirectorRole", {"parentFieldName": "program"}),
-        ("WriterRole", {"parentFieldName": "program"}),
-        ("HostRole", {"parentFieldName": "program"}),
-        ("GuestActorRole", {"parentFieldName": "program"}),
-        ("ProducerRole", {"parentFieldName": "program"}),
-        ("GuideImage", {}),
-        ("Affiliate", {}),
-        ("SeriesInfo", {}),
-        ("Season", {})
-    ]
-    
-    for type_name, attributes in type_definitions:
-        attribs = {"name": type_name}
-        attribs.update(attributes)
-        ET.SubElement(namespace, "Type", attrib=attribs)
-
-    # Add mcstore Assembly
-    assembly_mcstore = ET.SubElement(root, "Assembly", attrib={
-        "name": "mcstore",
-        "version": "6.0.6000.0",
-        "cultureInfo": "",
-        "publicKey": "0024000004800000940000000602000000240000525341310004000001000100B5FC90E7027F67871E773A8FDE8938C81DD402BA65B9201D60593E96C492651E889CC13F1415EBB53FAC1131AE0BD333C5EE6021672D9718EA31A8AEBD0DA0072F25D87DBA6FC90FFD598ED4DA35E44C398C454307E8E33B8426143DAEC9F596836F97C8F74750E5975C64E2189F45DEF46B2A2B1247ADC3652BF5C308055DA9"
-    })
-
-    # Add mcstore namespace
-    mcstore_ns = ET.SubElement(assembly_mcstore, "NameSpace", attrib={"name": "Microsoft.MediaCenter.Store"})
-    ET.SubElement(mcstore_ns, "Type", attrib={"name": "Provider"})
-    ET.SubElement(mcstore_ns, "Type", attrib={"name": "UId", "parentFieldName": "target"})
-
-    # Add Providers section
-    providers = ET.SubElement(root, "Providers")
-    ET.SubElement(providers, "Provider", attrib={
-        "id": safe_str(provider_info.get("providerId")),
-        "name": safe_str(provider_info.get("providerName")),
-        "displayName": safe_str(provider_info.get("providerName")),
-        "copyright": "© 2025 TitanTV Inc. All Rights Reserved."
-    })
-
-    # Create With section
-    with_section = ET.SubElement(root, "With", attrib={
-        "provider": safe_str(provider_info.get("providerId"))
-    })
-
-    # Add Keywords section
-    keywords = ET.SubElement(with_section, "Keywords")
-    keyword_data = [
-        ("k1", "General"),
-        ("k100", "All"),
-        ("k101", "Action/Adventure"),
-        ("k102", "Comedy"),
-        ("k103", "Documentary/Bio"),
-        ("k104", "Drama"),
-        ("k105", "Educational"),
-        ("k106", "Family/Children"),
-        ("k107", "Movies"),
-        ("k108", "Music"),
-        ("k109", "News"),
-        ("k110", "Sci-Fi/Fantasy"),
-        ("k111", "Soap"),
-        ("k112", "Sports"),
-        ("k113", "Other")
-    ]
-    for k_id, word in keyword_data:
-        ET.SubElement(keywords, "Keyword", attrib={"id": k_id, "word": word})
-
-    # Add KeywordGroups section
-    keyword_groups = ET.SubElement(with_section, "KeywordGroups")
-    ET.SubElement(keyword_groups, "KeywordGroup", attrib={
-        "uid": "!KeywordGroup!k1",
-        "groupName": "General",
-        "keywords": "k100,k101,k102,k103,k104,k105,k106,k107,k108,k109,k110,k111,k112,k113"
-    })
-
-    # Add GuideImages section - Use processed data
-    guide_images = ET.SubElement(with_section, "GuideImages")
-    for image in processed_data["guide_images"]:
-        ET.SubElement(guide_images, "GuideImage", attrib={
-            "id": safe_str(image["id"]),
-            "uid": safe_str(image["uid"]),
-            "imageUrl": safe_str(image["imageUrl"])
-        })
-
-    # Add People section - Use processed data instead of direct extraction
-    people = ET.SubElement(with_section, "People")
-    for person in processed_data["cast_and_crew"]:  # Changed from direct extraction
+def add_people_section(with_section, cast_and_crew):
+    """Add People section with cast and crew data."""
+    people = etree.SubElement(with_section, "People")
+    for person in cast_and_crew:
         if person.get("name"):
-            ET.SubElement(people, "Person", attrib={
+            etree.SubElement(people, "Person", attrib={
                 "id": f"p{safe_str(person['personId'])}",
                 "name": safe_str(person['name']),
                 "uid": f"!Person!{safe_str(person['name'])}"
             })
 
-    # Add SeriesInfos section
-    series_infos = ET.SubElement(with_section, "SeriesInfos")
-    for series in processed_data.get("series_info", []):
-        ET.SubElement(series_infos, "SeriesInfo", attrib={
+def add_series_infos_section(with_section, series_info):
+    """Add SeriesInfos section with series data."""
+    series_infos = etree.SubElement(with_section, "SeriesInfos")
+    for series in series_info:
+        etree.SubElement(series_infos, "SeriesInfo", attrib={
             "id": safe_str(series["id"]),
             "uid": safe_str(series["uid"]),
             "title": safe_str(series["title"]),
@@ -238,80 +129,62 @@ def generate_mxf(provider_info, lineup_info, channels, schedule_data, processed_
             "startAirdate": safe_str(series["startAirdate"])
         })
 
-    # Add Seasons section
-    ET.SubElement(with_section, "Seasons")
+def add_programs_section(with_section, programs):
+    """Add Programs section with program data."""
+    programs_section = etree.SubElement(with_section, "Programs")
+    for program in programs:
+        etree.SubElement(programs_section, "Program", attrib={
+            "id": safe_str(program["programId"]),
+            "uid": f"!Program!{safe_str(program['programId'])}",
+            "title": safe_str(program["title"]),
+            "description": safe_str(program["description"]),
+            "shortDescription": safe_str(program["shortDescription"]),
+            "episodeTitle": safe_str(program["episodeTitle"]),
+            "originalAirdate": safe_str(program["originalAirDate"]),
+            "keywords": safe_str(program["keywords"]),
+            "isSeries": safe_str(program["isSeries"]),
+            "isKids": safe_str(program["isKids"])
+        })
 
-    # Add Programs section with processed program data
-    programs = ET.SubElement(with_section, "Programs")
-    for program in processed_data["programs"]:
-        if program.get("title"):
-            program_element = ET.SubElement(programs, "Program", attrib={
-                "id": safe_str(program["programId"]),
-                "uid": f"!Program!{safe_str(program['programId'])}",
-                "title": safe_str(program["title"]),
-                "description": safe_str(program["description"]),
-                "shortDescription": safe_str(program.get("shortDescription", "")),
-                "episodeTitle": safe_str(program.get("episodeTitle", "")),
-                "originalAirdate": safe_str(program["originalAirDate"]),
-                "keywords": safe_str(program["keywords"]),
-                "isSeries": safe_str(program["isSeries"]),
-                "isKids": safe_str(program["isKids"])
-            })
-
-    # Add Affiliates section
-    ET.SubElement(with_section, "Affiliates")
-
-    # Add Services section with channel data
-    services = ET.SubElement(with_section, "Services")
-    for channel in channels:
-        if channel.get("callSign"):
-            ET.SubElement(services, "Service", attrib={
-                "id": f"s{safe_str(channel['channelIndex'])}",
-                "uid": f"!Service!{safe_str(channel['callSign'])}",
-                "name": safe_str(channel.get("network", "")),
-                "callSign": safe_str(channel['callSign'])
-            })
-
-    # Add ScheduleEntries section with processed schedule entries
-    schedule_entries_dict = {}
-    for entry in processed_data["schedule_entries"]:
-        service_id = entry.get("service")
-        if service_id:
-            if service_id not in schedule_entries_dict:
-                schedule_entries_dict[service_id] = ET.SubElement(
-                    with_section, 
-                    "ScheduleEntries",
-                    attrib={"service": service_id}
-                )
-            ET.SubElement(schedule_entries_dict[service_id], "ScheduleEntry", attrib={
-                "program": safe_str(entry["program"]),
-                "startTime": safe_str(entry["startTime"]),
-                "duration": safe_str(entry["duration"]),
-                "isCC": safe_str(entry.get("isCC", "0")),
-                "audioFormat": safe_str(entry.get("audioFormat", "2"))
-            })
-
-    # Add Lineups section
-    lineups = ET.SubElement(with_section, "Lineups")
-    lineup = ET.SubElement(lineups, "Lineup", attrib={
-        "id": safe_str(lineup_info["lineupId"]),
-        "uid": f"!Lineup!{safe_str(lineup_info['lineupName'])}",
-        "name": safe_str(lineup_info["lineupName"])
+def generate_mxf(provider_info, lineup_info, channels, schedule_data, processed_data):
+    """Generate the .mxf XML structure."""
+    root = etree.Element("MXF", nsmap={
+        "sql": "urn:schemas-microsoft-com:XML-sql",
+        "xsi": "http://www.w3.org/2001/XMLSchema-instance"
     })
 
-    channels_element = ET.SubElement(lineup, "channels")
-    for channel in channels:
-        if channel.get("channelIndex"):
-            ET.SubElement(channels_element, "Channel", attrib={
-                "uid": f"!Channel!{safe_str(lineup_info['lineupName'])}!{safe_str(channel['channelIndex'])}",
-                "lineup": safe_str(lineup_info["lineupId"]),
-                "service": f"s{safe_str(channel['channelIndex'])}",
-                "number": f"{safe_str(channel.get('majorChannel', ''))}." \
-                         f"{safe_str(channel.get('minorChannel', ''))}"
-            })
+    # Add Assembly Section
+    etree.SubElement(root, "Assembly", attrib={
+        "name": "mcepg",
+        "version": "6.0.6000.0",
+        "cultureInfo": "",
+        "publicKey": "0024000004800000940000000602000000240000525341310004000001000100B5FC90E7027F67871E773A8FDE8938C81DD402BA65B9201D60593E96C492651E889CC13F1415EBB53FAC1131AE0BD333C5EE6021672D9718EA31A8AEBD0DA0072F25D87DBA6FC90FFD598ED4DA35E44C398C454307E8E33B8426143DAEC9F596836F97C8F74750E5975C64E2189F45DEF46B2A2B1247ADC3652BF5C308055DA9"
+    })
+
+    # Add Providers section
+    providers = etree.SubElement(root, "Providers")
+    etree.SubElement(providers, "Provider", attrib={
+        "id": safe_str(provider_info.get("providerId")),
+        "name": safe_str(provider_info.get("providerName")),
+        "displayName": safe_str(provider_info.get("providerName")),
+        "copyright": "© 2025 TitanTV Inc. All Rights Reserved."
+    })
+
+    # Create With section
+    with_section = etree.SubElement(root, "With", attrib={
+        "provider": safe_str(provider_info.get("providerId"))
+    })
+
+    # Add People section
+    add_people_section(with_section, processed_data["cast_and_crew"])
+
+    # Add SeriesInfos section
+    add_series_infos_section(with_section, processed_data["series_info"])
+
+    # Add Programs section
+    add_programs_section(with_section, processed_data["programs"])
 
     # Convert to string and pretty-print
-    raw_xml = ET.tostring(root, encoding="unicode", method="xml")
-    pretty_xml = parseString(raw_xml).toprettyxml(indent="  ")
+    pretty_xml = etree.tostring(root, pretty_print=True, encoding="unicode")
 
     return pretty_xml
