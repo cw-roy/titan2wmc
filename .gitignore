@@ -1,6 +1,8 @@
 # Custom
 scratchpad.py
 example_json/
+api_responses/
+data/
 *.mxf
 *.pdf
 *.json
