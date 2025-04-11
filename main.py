@@ -1,150 +1,209 @@
+import os
+import orjson
 import requests
 from dotenv import load_dotenv
-import os
-import logging
 from datetime import datetime
-from auth import login, validate_user, validate_lineup
-from fetch import fetch_provider_info, fetch_lineup_info, fetch_channel_info, fetch_schedule
-from extract import extract_programs, extract_schedule_entries, extract_cast_and_crew, extract_guide_images, extract_series_info
-from processing import generate_mxf
+import pytz
 
 # Load environment variables from .env file
 load_dotenv()
 
-# TitanTV API Endpoints
-USER_URL = "https://titantv.com/api/user/{user_id}"
-LINEUP_URL = "https://titantv.com/api/lineup/{user_id}"
-CHANNEL_URL = "https://titantv.com/api/channel/{user_id}/{lineup_id}"
-SCHEDULE_URL = "https://titantv.com/api/schedule/{user_id}/{lineup_id}/{start_time}/{duration}"
+# Get user credentials from environment
+user_id = os.getenv("TITANTV_USER_ID")
+login_name = os.getenv("TITANTV_USERNAME")
+password = os.getenv("TITANTV_PASSWORD")
 
-# Retrieve credentials and user ID from environment variables
-USERNAME = os.getenv("TITANTV_USERNAME")
-PASSWORD = os.getenv("TITANTV_PASSWORD")
-USER_ID = os.getenv("TITANTV_USER_ID")
+if not all([user_id, login_name, password]):
+    raise ValueError("Missing one or more required environment variables: TITANTV_USER_ID, TITANTV_USERNAME, TITANTV_PASSWORD")
 
-# Headers to mimic a real browser
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-    "Referer": "https://titantv.com/",
-    "Content-Type": "application/json"
+# API constants
+lineup_id = "de9ee6e5-0d21-426b-87d7-be11545055d2"
+
+# Define URLs
+channels_url = f"https://titantv.com/api/channel/{user_id}/{lineup_id}"
+lineup_url = f"https://titantv.com/api/lineup/{user_id}"
+schedule_url = f"https://titantv.com/api/schedule/{user_id}/{lineup_id}/{{schedule_start}}/300"
+user_url = f"https://titantv.com/api/user/{user_id}"
+
+# Firefox user agent string
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0'
 }
 
-# Set up logging
-logging.basicConfig(filename="titantv.log", level=logging.INFO, format="%(asctime)s - %(message)s")
+# Define the output file path
+data_folder = 'data'
+os.makedirs(data_folder, exist_ok=True)
+output_file = os.path.join(data_folder, 'api_output.json')
 
-# Update DEFAULT_DURATION to fetch more data
-DEFAULT_DURATION = "1440"  # 24 hours instead of 5 hours
+# Helper function to fetch and return JSON
+def fetch_json(url):
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Failed to fetch {url} (HTTP {response.status_code})")
 
+# Fetch lineup data to get the time zone info
+lineup_data = fetch_json(lineup_url)
 
-def login_and_validate(session):
-    """Handles login and validation of user and lineup."""
-    logging.info("[+] Logging in and validating user and lineup...")
+# Get the local machine's current time and adjust for the local time zone
+local_tz = pytz.timezone('America/Los_Angeles')  # Replace with your local time zone
+local_time = datetime.now(local_tz)  # Get local time in specified time zone
 
-    # Login
-    session = login(session, USERNAME, PASSWORD, HEADERS)
-    if not session:
-        logging.error("[-] Login failed. Exiting.")
-        exit(1)
+# Format the schedule start time in the required format for the API
+schedule_start = local_time.strftime("%Y%m%d%H%M")  # e.g., "202504081600"
 
-    # Validate user
-    user_url = USER_URL.format(user_id=USER_ID)
-    if not validate_user(session, user_url, HEADERS):
-        logging.error("[-] User validation failed. Exiting.")
-        exit(1)
+# Construct the final schedule URL with dynamic schedule_start
+schedule_url_dynamic = schedule_url.format(schedule_start=schedule_start)
 
-    # Validate lineup
-    lineup_url = LINEUP_URL.format(user_id=USER_ID)
-    if not validate_lineup(session, lineup_url, HEADERS):
-        logging.error("[-] Lineup validation failed. Exiting.")
-        exit(1)
+# Fetch data from TitanTV API
+channels_data = fetch_json(channels_url)
+schedule_data = fetch_json(schedule_url_dynamic)
 
-    logging.info("[+] Login and validation successful.")
-    return user_url, lineup_url
+# Structure final output
+combined_data = {
+    'lineup': {
+        'lineupId': lineup_data['lineups'][0]['lineupId'],
+        'lineupName': lineup_data['lineups'][0]['lineupName'],
+        'timezone': lineup_data['lineups'][0]['timeZone'],
+        'utcOffset': lineup_data['lineups'][0]['utcOffset'],
+        'observesDst': lineup_data['lineups'][0]['observesDst']
+    },
+    'channels': [],
+    'schedule': []
+}
 
+# Process channels
+for channel in channels_data.get('channels', []):
+    combined_data['channels'].append({
+        'channelId': channel['channelId'],
+        'callSign': channel['callSign'],
+        'network': channel['network'],
+        'description': channel['description'],
+        'hdCapable': channel['hdCapable'],
+        'logo': channel['logo'],
+        'sortOrder': channel['sortOrder'],
+        'majorChannel': channel['majorChannel'],
+        'minorChannel': channel['minorChannel']
+    })
 
-def fetch_data(session, user_url, lineup_url):
-    """Fetches provider, lineup, channel, and schedule data."""
-    logging.info("[+] Fetching data...")
+# Process schedule
+for channel in schedule_data.get('channels', []):
+    for day in channel.get('days', []):
+        for event in day.get('events', []):
+            combined_data['schedule'].append({
+                'channelId': channel['channelIndex'],
+                'eventId': event['eventId'],
+                'startTime': event['startTime'],
+                'endTime': event['endTime'],
+                'title': event['title'],
+                'description': event['description'],
+                'programType': event['programType'],
+                'tvRating': event.get('tvRating', ''),
+                'showCard': event.get('showCard', '')
+            })
 
-    # Fetch provider information
-    provider_info = fetch_provider_info(session, user_url, HEADERS)
-    if not provider_info:
-        logging.error("[-] Failed to fetch provider information. Exiting.")
-        exit(1)
+# Write the output JSON
+with open(output_file, 'wb') as f:
+    f.write(orjson.dumps(combined_data, option=orjson.OPT_INDENT_2))
 
-    # Fetch lineup information
-    lineup_info = fetch_lineup_info(session, lineup_url, HEADERS)
-    if not lineup_info:
-        logging.error("[-] Failed to fetch lineup information. Exiting.")
-        exit(1)
-
-    # Fetch channel information
-    channel_url = CHANNEL_URL.format(user_id=USER_ID, lineup_id=lineup_info["lineupId"])
-    channels = fetch_channel_info(session, channel_url, HEADERS)
-    if not channels:
-        logging.error("[-] Failed to fetch channel information. Exiting.")
-        exit(1)
-
-    # Fetch schedule with 24 hours of data
-    start_time = datetime.now().strftime("%Y%m%d%H%M")
-    schedule_url = SCHEDULE_URL.format(
-        user_id=USER_ID,
-        lineup_id=lineup_info["lineupId"],
-        start_time=start_time,
-        duration="1440"  # 24 hours
-    )
-    schedule_data = fetch_schedule(session, schedule_url, HEADERS)
-    if not schedule_data:
-        logging.error("[-] Failed to fetch schedule. Exiting.")
-        exit(1)
-
-    return provider_info, lineup_info, channels, schedule_data
-
-
-def process_data(schedule_data, channels):
-    """Processes the fetched data."""
-    logging.info("[+] Processing data...")
-    return {
-        "programs": extract_programs(schedule_data),
-        "schedule_entries": extract_schedule_entries(schedule_data),
-        "cast_and_crew": extract_cast_and_crew(schedule_data),
-        "guide_images": extract_guide_images(schedule_data, channels),
-        "series_info": extract_series_info(schedule_data)  # Add this line
-    }
+print(f"Fetched and combined TitanTV listing data saved to: {output_file}")
 
 
-def generate_output(provider_info, lineup_info, channels, schedule_data):
-    """Generates the MXF file and saves it."""
-    logging.info("[+] Generating MXF file...")
-    
-    # Process the data first
-    processed_data = process_data(schedule_data, channels)
-    
-    # Generate the MXF file with processed data
-    mxf_content = generate_mxf(provider_info, lineup_info, channels, schedule_data, processed_data)
+# import os
+# import orjson
+# import requests
+# from dotenv import load_dotenv
 
-    # Save the MXF file
-    with open("output.mxf", "w", encoding="utf-8") as file:
-        file.write(mxf_content)
+# # Load environment variables from .env file
+# load_dotenv()
 
-    logging.info("[+] Successfully generated output.mxf.")
+# # Get user credentials from environment
+# user_id = os.getenv("TITANTV_USER_ID")
+# login_name = os.getenv("TITANTV_USERNAME")
+# password = os.getenv("TITANTV_PASSWORD")
 
+# if not all([user_id, login_name, password]):
+#     raise ValueError("Missing one or more required environment variables: TITANTV_USER_ID, TITANTV_USERNAME, TITANTV_PASSWORD")
 
-if __name__ == "__main__":
-    try:
-        logging.info("[+] Start run...")
-        session = requests.Session()
+# # API constants
+# lineup_id = "de9ee6e5-0d21-426b-87d7-be11545055d2"
+# schedule_start = "202504081600"  # Adjust this as needed
+# schedule_duration = "300"        # In minutes
 
-        # Step 1: Login and validate
-        user_url, lineup_url = login_and_validate(session)
+# # Define URLs
+# channels_url = f"https://titantv.com/api/channel/{user_id}/{lineup_id}"
+# lineup_url = f"https://titantv.com/api/lineup/{user_id}"
+# schedule_url = f"https://titantv.com/api/schedule/{user_id}/{lineup_id}/{schedule_start}/{schedule_duration}"
 
-        # Step 2: Fetch data
-        provider_info, lineup_info, channels, schedule_data = fetch_data(session, user_url, lineup_url)
+# # Firefox user agent string
+# headers = {
+#     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0'
+# }
 
-        # Step 3: Process data and generate output in one step
-        generate_output(provider_info, lineup_info, channels, schedule_data)
+# # Define the output file path
+# data_folder = 'data'
+# os.makedirs(data_folder, exist_ok=True)
+# output_file = os.path.join(data_folder, 'api_output.json')
 
-    finally:
-        if session:
-            session.close()
-            logging.info("[+] Session closed.")
+# # Helper function to fetch and return JSON
+# def fetch_json(url):
+#     response = requests.get(url, headers=headers)
+#     if response.status_code == 200:
+#         return response.json()
+#     else:
+#         raise Exception(f"Failed to fetch {url} (HTTP {response.status_code})")
+
+# # Fetch data from TitanTV API
+# lineup_data = fetch_json(lineup_url)
+# channels_data = fetch_json(channels_url)
+# schedule_data = fetch_json(schedule_url)
+
+# # Structure final output (without user section)
+# combined_data = {
+#     'lineup': {
+#         'lineupId': lineup_data['lineups'][0]['lineupId'],
+#         'lineupName': lineup_data['lineups'][0]['lineupName'],
+#         'timezone': lineup_data['lineups'][0]['timeZone'],
+#         'utcOffset': lineup_data['lineups'][0]['utcOffset'],
+#         'observesDst': lineup_data['lineups'][0]['observesDst']
+#     },
+#     'channels': [],
+#     'schedule': []
+# }
+
+# # Process channels
+# for channel in channels_data.get('channels', []):
+#     combined_data['channels'].append({
+#         'channelId': channel['channelId'],
+#         'callSign': channel['callSign'],
+#         'network': channel['network'],
+#         'description': channel['description'],
+#         'hdCapable': channel['hdCapable'],
+#         'logo': channel['logo'],
+#         'sortOrder': channel['sortOrder'],
+#         'majorChannel': channel['majorChannel'],
+#         'minorChannel': channel['minorChannel']
+#     })
+
+# # Process schedule
+# for channel in schedule_data.get('channels', []):
+#     for day in channel.get('days', []):
+#         for event in day.get('events', []):
+#             combined_data['schedule'].append({
+#                 'channelId': channel['channelIndex'],
+#                 'eventId': event['eventId'],
+#                 'startTime': event['startTime'],
+#                 'endTime': event['endTime'],
+#                 'title': event['title'],
+#                 'description': event['description'],
+#                 'programType': event['programType'],
+#                 'tvRating': event.get('tvRating', ''),
+#                 'showCard': event.get('showCard', '')
+#             })
+
+# # Write the output JSON
+# with open(output_file, 'wb') as f:
+#     f.write(orjson.dumps(combined_data, option=orjson.OPT_INDENT_2))
+
+# print(f"Fetched and combined TitanTV listing data saved to: {output_file}")
