@@ -1,4 +1,5 @@
-### titantv/processor.py
+#!/usr/bin/env python3
+
 def process_lineup_data(lineup_data):
     lineup = lineup_data["lineups"][0]
     return {

@@ -1,5 +1,5 @@
-### titantv/config.py
-import os
+#!/usr/bin/env python3
+
 
 CONFIG = {
     "debug_mode": True,

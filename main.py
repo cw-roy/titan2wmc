@@ -1,8 +1,9 @@
-### main.py
+#!/usr/bin/env python3
+
 import logging
 import os
 
-from titantv import config
+# from titantv import config
 from titantv.api import fetch_json, get_api_urls
 from titantv.auth import load_credentials
 from titantv.config import CONFIG

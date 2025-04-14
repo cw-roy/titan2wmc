@@ -1,4 +1,5 @@
-### titantv/mxf_generator.py
+#!/usr/bin/env python3
+
 import logging
 
 from lxml import etree
