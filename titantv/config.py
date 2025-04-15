@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+
+
+CONFIG = {
+    "debug_mode": True,
+    "log_to_console": True,
+    "log_to_file": True,
+    "log_level": "INFO",
+    "data_folder": "data",
+    "logs_folder": "logs",
+    "output_json": "data/api_output.json",
+    "output_mxf": "data/listings.mxf",
+    "log_file": "logs/titantv.log",
+}
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",  # noqa: E501
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36",  # noqa: E501
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0",
+]
+

@@ -1,7 +1,7 @@
 # Custom
 scratchpad.py
-example_json/
 reference_api_responses/
+reference_mxf_files/
 data/
 logs/
 *.mxf
