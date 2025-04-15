@@ -8,10 +8,11 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $pythonScript = Join-Path $PSScriptRoot "main.py"
 $mxfPath = Join-Path $PSScriptRoot "data" "listings.mxf"
 $loadMxfPath = "$env:SystemRoot\ehome\loadmxf.exe"
-$backupPrefix = (Get-Date).ToString("yyyy-MM-dd")
+$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $logFile = Join-Path $PSScriptRoot "data" "wmc_operations.log"
 $venvPath = Join-Path $PSScriptRoot "venv"
 $requirementsFile = Join-Path $PSScriptRoot "requirements.txt"
+$pythonExe = Join-Path $venvPath "Scripts\python.exe"
 
 # Function for consistent logging
 function Write-LogMessage {
@@ -33,75 +34,63 @@ function Write-LogMessage {
     }
     
     # File output
-    Add-Content -Path $logFile -Value $logMessage
+    $logMessage | Out-File -FilePath $logFile -Append -Encoding UTF8
 }
 
 # Function to check Python 3 installation
 function Test-Python {
     try {
-        $pythonVersion = py -c "import sys; print(sys.version_info[0])"
-        if ($pythonVersion -eq "3") {
+        $version = & py -c "import sys; print(sys.version_info[0])"
+        if ($version -eq "3") {
             Write-LogMessage "Python 3 found" -Color Green
             return $true
+        } else {
+            Write-LogMessage "Python version is not 3 (found $version)" -IsError
+            return $false
         }
-        Write-LogMessage "Python 3 not found (found version $pythonVersion)" -IsError
-        return $false
     } catch {
         Write-LogMessage "Python not found on system" -IsError
         return $false
     }
 }
 
-# Function to setup and validate Python environment
+# Function to setup and validate Python virtual environment
 function Initialize-VirtualEnv {
-    # Create virtual environment if it doesn't exist
     if (-not (Test-Path $venvPath)) {
         Write-LogMessage "Creating virtual environment..." -Color Yellow
-        py -m venv $venvPath
+        & py -m venv $venvPath
         if (-not $?) {
             Write-LogMessage "Failed to create virtual environment" -IsError
             return $false
         }
     }
 
-    # Activate virtual environment
-    $activateScript = Join-Path $venvPath "Scripts" "Activate.ps1"
-    if (Test-Path $activateScript) {
-        . $activateScript
-        Write-LogMessage "Virtual environment activated" -Color Green
-    } else {
-        Write-LogMessage "Virtual environment activation script not found" -IsError
-        return $false
-    }
-
-    # Install/Update pip
-    Write-LogMessage "Updating pip..." -Color Yellow
-    py -m pip install --upgrade pip
+    Write-LogMessage "Ensuring pip is up to date..." -Color Yellow
+    & $pythonExe -m pip install --upgrade pip
     if (-not $?) {
-        Write-LogMessage "Failed to update pip" -IsError
+        Write-LogMessage "Failed to upgrade pip" -IsError
         return $false
     }
 
-    # Install requirements if file exists
     if (Test-Path $requirementsFile) {
         Write-LogMessage "Installing required packages..." -Color Yellow
-        pip install -r $requirementsFile
+        & $pythonExe -m pip install -r $requirementsFile
         if (-not $?) {
-            Write-LogMessage "Failed to install requirements" -IsError
+            Write-LogMessage "Failed to install required packages" -IsError
             return $false
         }
-        Write-LogMessage "All required packages installed" -Color Green
+        Write-LogMessage "Required packages installed" -Color Green
     } else {
         Write-LogMessage "requirements.txt not found" -IsError
         return $false
     }
-    
+
     return $true
 }
 
 # Verify WMC Installation
 if (-not (Test-Path $loadMxfPath)) {
-    Write-LogMessage "Windows Media Center is not installed or loadmxf.exe is missing" -IsError
+    Write-LogMessage "Windows Media Center not installed or loadmxf.exe missing" -IsError
     Exit 1
 }
 
@@ -116,27 +105,27 @@ if (-not (Initialize-VirtualEnv)) {
     Exit 1
 }
 
-# Launch the Python script to generate MXF
+# Run the Python script
 try {
-    Write-LogMessage "Fetching and processing TitanTV listings..." -Color Yellow
-    & "$venvPath\Scripts\python.exe" "$pythonScript"
-    
+    Write-LogMessage "Running Python script to generate MXF..." -Color Yellow
+    & $pythonExe $pythonScript
+
     if ($LASTEXITCODE -eq 0 -and (Test-Path $mxfPath)) {
         Write-LogMessage "MXF file generated successfully" -Color Green
-        
-        # Backup current MXF file with timestamp
-        $backupPath = Join-Path $PSScriptRoot "data" "$backupPrefix-listings.mxf"
+
+        # Backup MXF file
+        $backupPath = Join-Path $PSScriptRoot "data" "$timestamp-listings.mxf"
         Copy-Item -Path $mxfPath -Destination $backupPath -Force
-        Write-LogMessage "Created backup: $backupPrefix-listings.mxf" -Color Cyan
-        
-        # Import the MXF file into WMC
-        Write-LogMessage "Importing listings into Windows Media Center..." -Color Yellow
+        Write-LogMessage "Created backup: $($backupPath | Split-Path -Leaf)" -Color Cyan
+
+        # Import MXF into WMC
+        Write-LogMessage "Importing MXF into Windows Media Center..." -Color Yellow
         $loadMxfResult = Start-Process -FilePath $loadMxfPath -ArgumentList "`"$mxfPath`"" -Wait -PassThru
-        
+
         if ($loadMxfResult.ExitCode -eq 0) {
             Write-LogMessage "EPG data import completed successfully" -Color Green
-            
-            # Clean up old MXF backups (keep last 7 days)
+
+            # Delete old backups (keep last 7)
             Get-ChildItem -Path (Join-Path $PSScriptRoot "data") -Filter "*-listings.mxf" |
                 Where-Object { $_.Name -ne "listings.mxf" } |
                 Sort-Object CreationTime -Descending |
@@ -146,19 +135,14 @@ try {
                     Write-LogMessage "Removed old backup: $($_.Name)" -Color Gray
                 }
         } else {
-            Write-LogMessage "EPG data import failed with exit code: $($loadMxfResult.ExitCode)" -IsError
+            Write-LogMessage "EPG import failed with exit code: $($loadMxfResult.ExitCode)" -IsError
         }
     } else {
-        Write-LogMessage "Failed to generate MXF file" -IsError
+        Write-LogMessage "Python script failed or MXF file not generated" -IsError
     }
 } catch {
-    Write-LogMessage "Failed to execute Python script: $_" -IsError
-} finally {
-    # Deactivate virtual environment if it was activated
-    if (Get-Command deactivate -ErrorAction SilentlyContinue) {
-        deactivate
-    }
+    Write-LogMessage "Error executing Python script: $_" -IsError
 }
 
-Write-LogMessage "Operation completed. Press Enter to exit..." -Color Cyan
+Write-LogMessage "Operation complete. Press Enter to exit..." -Color Cyan
 Read-Host
