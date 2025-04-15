@@ -39,7 +39,7 @@ function Write-LogMessage {
 # Function to check Python 3 installation
 function Test-Python {
     try {
-        $pythonVersion = python -c "import sys; print(sys.version_info[0])"
+        $pythonVersion = py -c "import sys; print(sys.version_info[0])"
         if ($pythonVersion -eq "3") {
             Write-LogMessage "Python 3 found" -Color Green
             return $true
@@ -57,7 +57,7 @@ function Initialize-VirtualEnv {
     # Create virtual environment if it doesn't exist
     if (-not (Test-Path $venvPath)) {
         Write-LogMessage "Creating virtual environment..." -Color Yellow
-        python -m venv $venvPath
+        py -m venv $venvPath
         if (-not $?) {
             Write-LogMessage "Failed to create virtual environment" -IsError
             return $false
@@ -76,7 +76,7 @@ function Initialize-VirtualEnv {
 
     # Install/Update pip
     Write-LogMessage "Updating pip..." -Color Yellow
-    python -m pip install --upgrade pip
+    py -m pip install --upgrade pip
     if (-not $?) {
         Write-LogMessage "Failed to update pip" -IsError
         return $false
