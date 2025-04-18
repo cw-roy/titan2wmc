@@ -5,14 +5,16 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 # Configuration
-$pythonScript = Join-Path $PSScriptRoot "main.py"
-$mxfPath = Join-Path $PSScriptRoot "data" "listings.mxf"
-$loadMxfPath = "$env:SystemRoot\ehome\loadmxf.exe"
-$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$logFile = Join-Path $PSScriptRoot "data" "wmc_operations.log"
-$venvPath = Join-Path $PSScriptRoot "venv"
+$pythonScript   = Join-Path $PSScriptRoot "main.py"
+$dataDir        = Join-Path $PSScriptRoot "data"
+$mxfPath        = Join-Path $dataDir "listings.mxf"
+$logFile        = Join-Path $dataDir "wmc_operations.log"
+$venvPath       = Join-Path $PSScriptRoot "venv"
 $requirementsFile = Join-Path $PSScriptRoot "requirements.txt"
-$pythonExe = Join-Path $venvPath "Scripts\python.exe"
+$pythonExe      = Join-Path $venvPath "Scripts\python.exe"
+$loadMxfPath    = "$env:SystemRoot\ehome\loadmxf.exe"
+$storePath      = "C:\ProgramData\Microsoft\eHome\EPG\mcepg3-0.db"
+$timestamp      = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 
 # Function for consistent logging
 function Write-LogMessage {
@@ -26,30 +28,28 @@ function Write-LogMessage {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
     
-    # Console output
     if ($IsError) {
-        Write-Host $Message -ForegroundColor Red
+        Write-Host $logMessage -ForegroundColor Red
     } else {
-        Write-Host $Message -ForegroundColor $Color
+        Write-Host $logMessage -ForegroundColor $Color
     }
-    
-    # File output
+
     $logMessage | Out-File -FilePath $logFile -Append -Encoding UTF8
 }
 
 # Function to check Python 3 installation
 function Test-Python {
     try {
-        $version = & py -c "import sys; print(sys.version_info[0])"
-        if ($version -eq "3") {
-            Write-LogMessage "Python 3 found" -Color Green
+        $version = & python --version 2>&1
+        if ($version -match "^Python 3") {
+            Write-LogMessage "Python 3 found via 'python'" -Color Green
             return $true
         } else {
-            Write-LogMessage "Python version is not 3 (found $version)" -IsError
+            Write-LogMessage "Python version is not 3: $version" -IsError
             return $false
         }
     } catch {
-        Write-LogMessage "Python not found on system" -IsError
+        Write-LogMessage "Python not found on system using 'python'" -IsError
         return $false
     }
 }
@@ -58,7 +58,7 @@ function Test-Python {
 function Initialize-VirtualEnv {
     if (-not (Test-Path $venvPath)) {
         Write-LogMessage "Creating virtual environment..." -Color Yellow
-        & py -m venv $venvPath
+        & python -m venv $venvPath
         if (-not $?) {
             Write-LogMessage "Failed to create virtual environment" -IsError
             return $false
@@ -97,11 +97,13 @@ if (-not (Test-Path $loadMxfPath)) {
 # Check Python and setup environment
 if (-not (Test-Python)) {
     Write-LogMessage "Please install Python 3 and try again" -IsError
+    Read-Host "Press Enter to exit..."
     Exit 1
 }
 
 if (-not (Initialize-VirtualEnv)) {
     Write-LogMessage "Failed to initialize Python environment" -IsError
+    Read-Host "Press Enter to exit..."
     Exit 1
 }
 
@@ -114,19 +116,19 @@ try {
         Write-LogMessage "MXF file generated successfully" -Color Green
 
         # Backup MXF file
-        $backupPath = Join-Path $PSScriptRoot "data" "$timestamp-listings.mxf"
+        $backupPath = Join-Path $dataDir "$timestamp-listings.mxf"
         Copy-Item -Path $mxfPath -Destination $backupPath -Force
         Write-LogMessage "Created backup: $($backupPath | Split-Path -Leaf)" -Color Cyan
 
-        # Import MXF into WMC
+        # Import MXF into Windows Media Center using correct store
         Write-LogMessage "Importing MXF into Windows Media Center..." -Color Yellow
-        $loadMxfResult = Start-Process -FilePath $loadMxfPath -ArgumentList "`"$mxfPath`"" -Wait -PassThru
+        $loadMxfResult = Start-Process -FilePath $loadMxfPath -ArgumentList "-s `"$storePath`" -i `"$mxfPath`"" -Wait -PassThru
 
         if ($loadMxfResult.ExitCode -eq 0) {
             Write-LogMessage "EPG data import completed successfully" -Color Green
 
             # Delete old backups (keep last 7)
-            Get-ChildItem -Path (Join-Path $PSScriptRoot "data") -Filter "*-listings.mxf" |
+            Get-ChildItem -Path $dataDir -Filter "*-listings.mxf" |
                 Where-Object { $_.Name -ne "listings.mxf" } |
                 Sort-Object CreationTime -Descending |
                 Select-Object -Skip 7 |

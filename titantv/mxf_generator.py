@@ -58,7 +58,7 @@ def generate_mxf(data, output_path):
     output_file_path = os.path.join(output_path)  # Ensure output path compatibility
 
     tree = etree.ElementTree(mxf)
-    tree.write(output_file_path, pretty_print=True, xml_declaration=True, encoding="utf-8")
+    tree.write(output_file_path, pretty_print=True, xml_declaration=True, encoding="utf-8")  # noqa: E501
     logging.info(f"MXF file written to {output_file_path}")
 
 
