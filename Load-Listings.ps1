@@ -1,3 +1,5 @@
+# Load-Listings.ps1
+
 # Ensure we're running with admin rights
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
@@ -5,21 +7,33 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 # Configuration
-$pythonScript   = Join-Path $PSScriptRoot "main.py"
-$dataDir        = Join-Path $PSScriptRoot "data"
-$mxfPath        = Join-Path $dataDir "listings.mxf"
-$logFile        = Join-Path $dataDir "wmc_operations.log"
-$venvPath       = Join-Path $PSScriptRoot "venv"
+$pythonScript = Join-Path $PSScriptRoot "main.py"
+$dataDir = Join-Path $PSScriptRoot "data"
+$logsDir = Join-Path $PSScriptRoot "logs"
+$mxfPath = Join-Path $dataDir "listings.mxf"
+$logFile = Join-Path $logsDir "wmc_operations.log"
+$venvPath = Join-Path $PSScriptRoot "venv"
 $requirementsFile = Join-Path $PSScriptRoot "requirements.txt"
-$pythonExe      = Join-Path $venvPath "Scripts\python.exe"
-$loadMxfPath    = "$env:SystemRoot\ehome\loadmxf.exe"
-$storePath      = "C:\ProgramData\Microsoft\eHome\EPG\mcepg3-0.db"
-$timestamp      = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+$pythonExe = Join-Path $venvPath "Scripts\python.exe"
+$loadMxfPath = "$env:SystemRoot\ehome\loadmxf.exe"
+$storePath = "C:\ProgramData\Microsoft\eHome\EPG\mcepg3-0.db"
+$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+
+# Ensure 'data' and 'logs' directories exist
+if (-not (Test-Path $dataDir)) {
+    New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+    Write-LogMessage "Created data directory: $dataDir" -Color DarkGray
+}
+
+if (-not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+    Write-LogMessage "Created logs directory: $logsDir" -Color DarkGray
+}
 
 # Function for consistent logging
 function Write-LogMessage {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message,
         [string]$Color = "White",
         [switch]$IsError
@@ -30,7 +44,8 @@ function Write-LogMessage {
     
     if ($IsError) {
         Write-Host $logMessage -ForegroundColor Red
-    } else {
+    }
+    else {
         Write-Host $logMessage -ForegroundColor $Color
     }
 
@@ -40,16 +55,18 @@ function Write-LogMessage {
 # Function to check Python 3 installation
 function Test-Python {
     try {
-        $version = & python --version 2>&1
+        $version = & $pythonExe --version 2>&1
         if ($version -match "^Python 3") {
-            Write-LogMessage "Python 3 found via 'python'" -Color Green
+            Write-LogMessage "Python 3 found via '$pythonExe'" -Color Green
             return $true
-        } else {
+        }
+        else {
             Write-LogMessage "Python version is not 3: $version" -IsError
             return $false
         }
-    } catch {
-        Write-LogMessage "Python not found on system using 'python'" -IsError
+    }
+    catch {
+        Write-LogMessage "Python not found on system using '$pythonExe'" -IsError
         return $false
     }
 }
@@ -80,7 +97,8 @@ function Initialize-VirtualEnv {
             return $false
         }
         Write-LogMessage "Required packages installed" -Color Green
-    } else {
+    }
+    else {
         Write-LogMessage "requirements.txt not found" -IsError
         return $false
     }
@@ -129,20 +147,23 @@ try {
 
             # Delete old backups (keep last 7)
             Get-ChildItem -Path $dataDir -Filter "*-listings.mxf" |
-                Where-Object { $_.Name -ne "listings.mxf" } |
-                Sort-Object CreationTime -Descending |
-                Select-Object -Skip 7 |
-                ForEach-Object {
-                    Remove-Item $_.FullName -Force
-                    Write-LogMessage "Removed old backup: $($_.Name)" -Color Gray
-                }
-        } else {
+            Where-Object { $_.Name -ne "listings.mxf" } |
+            Sort-Object CreationTime -Descending |
+            Select-Object -Skip 7 |
+            ForEach-Object {
+                Remove-Item $_.FullName -Force
+                Write-LogMessage "Removed old backup: $($_.Name)" -Color Gray
+            }
+        }
+        else {
             Write-LogMessage "EPG import failed with exit code: $($loadMxfResult.ExitCode)" -IsError
         }
-    } else {
+    }
+    else {
         Write-LogMessage "Python script failed or MXF file not generated" -IsError
     }
-} catch {
+}
+catch {
     Write-LogMessage "Error executing Python script: $_" -IsError
 }
 

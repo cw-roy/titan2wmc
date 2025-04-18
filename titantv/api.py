@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# api.py
 
 import logging
 import random
@@ -9,6 +10,7 @@ from titantv.config import USER_AGENTS
 
 session = requests.Session()
 
+
 def get_api_urls(user_id, lineup_id):
     return {
         "channels": f"https://titantv.com/api/channel/{user_id}/{lineup_id}",
@@ -16,6 +18,7 @@ def get_api_urls(user_id, lineup_id):
         "schedule": f"https://titantv.com/api/schedule/{user_id}/{lineup_id}/{{schedule_start}}/300",
         "user": f"https://titantv.com/api/user/{user_id}",
     }
+
 
 def fetch_json(url, label):
     try:

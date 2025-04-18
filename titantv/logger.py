@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# logger.py
 
 import logging
 import os
@@ -15,7 +16,9 @@ def setup_logging(log_file):
     if CONFIG["log_to_console"]:
         handlers.append(logging.StreamHandler())
     if CONFIG["log_to_file"]:
-        log_file_path = os.path.join(logs_folder, log_file)  # Use os.path.join() for log file
+        log_file_path = os.path.join(
+            logs_folder, log_file
+        )  # Use os.path.join() for log file
         handlers.append(logging.FileHandler(log_file_path, mode="a"))
 
     logging.basicConfig(
@@ -50,4 +53,3 @@ def setup_logging(log_file):
 #     )
 #     logging.info("Script started.")
 #     logging.info(f"Debug mode is {'ON' if CONFIG['debug_mode'] else 'OFF'}")
-

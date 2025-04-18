@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# auth.py
 
 import os
 
@@ -13,5 +14,7 @@ def load_credentials():
         "password": os.getenv("TITANTV_PASSWORD"),
     }
     if not all(credentials.values()):
-        raise ValueError("Missing required environment variables: TITANTV_USER_ID, TITANTV_USERNAME, TITANTV_PASSWORD")  # noqa: E501
+        raise ValueError(
+            "Missing required environment variables: TITANTV_USER_ID, TITANTV_USERNAME, TITANTV_PASSWORD"
+        )  # noqa: E501
     return credentials

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# processor.py
+
 
 def process_lineup_data(lineup_data):
     lineup = lineup_data["lineups"][0]
@@ -9,6 +11,7 @@ def process_lineup_data(lineup_data):
         "utcOffset": lineup["utcOffset"],
         "observesDst": lineup["observesDst"],
     }
+
 
 def process_channels_data(channels_data):
     return [
@@ -25,6 +28,7 @@ def process_channels_data(channels_data):
         }
         for c in channels_data.get("channels", [])
     ]
+
 
 def process_schedule_data(schedule_data):
     schedule = []
@@ -45,4 +49,3 @@ def process_schedule_data(schedule_data):
                     }
                 )
     return schedule
-

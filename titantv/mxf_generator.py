@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# mxf_generator.py
 
 import logging
 import os
@@ -13,11 +14,15 @@ def generate_mxf(data, output_path):
     # Lineups
     lineup_elem = etree.SubElement(mxf, "Lineups")
     lineup = data["lineup"]
-    lineup_node = etree.SubElement(lineup_elem, "Lineup", id="1", uid=lineup["lineupId"])  # noqa: E501
+    lineup_node = etree.SubElement(
+        lineup_elem, "Lineup", id="1", uid=lineup["lineupId"]
+    )  # noqa: E501
     etree.SubElement(lineup_node, "Name").text = lineup["lineupName"]
     etree.SubElement(lineup_node, "TimeZone").text = lineup["timezone"]
     etree.SubElement(lineup_node, "UTCOffset").text = str(lineup["utcOffset"])
-    etree.SubElement(lineup_node, "ObservesDaylightSaving").text = str(lineup["observesDst"]).lower()  # noqa: E501
+    etree.SubElement(lineup_node, "ObservesDaylightSaving").text = str(
+        lineup["observesDst"]
+    ).lower()  # noqa: E501
 
     # Channels
     channels_elem = etree.SubElement(mxf, "Channels")
@@ -58,9 +63,10 @@ def generate_mxf(data, output_path):
     output_file_path = os.path.join(output_path)  # Ensure output path compatibility
 
     tree = etree.ElementTree(mxf)
-    tree.write(output_file_path, pretty_print=True, xml_declaration=True, encoding="utf-8")  # noqa: E501
+    tree.write(
+        output_file_path, pretty_print=True, xml_declaration=True, encoding="utf-8"
+    )  # noqa: E501
     logging.info(f"MXF file written to {output_file_path}")
-
 
 
 # #!/usr/bin/env python3
