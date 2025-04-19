@@ -15,6 +15,6 @@ def load_credentials():
     }
     if not all(credentials.values()):
         raise ValueError(
-            "Missing required environment variables: TITANTV_USER_ID, TITANTV_USERNAME, TITANTV_PASSWORD"
+            "Missing required environment variables: TITANTV_USER_ID, TITANTV_USERNAME, TITANTV_PASSWORD"  # noqa: E501
         )  # noqa: E501
     return credentials
