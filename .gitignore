@@ -1,5 +1,4 @@
 # Custom
-scratchpad.py
 reference_api_responses/
 reference_mxf_files/
 data/
@@ -9,6 +8,9 @@ logs/
 *.json
 *.xml
 *.lnk
+Counter.mem
+mcepg3*
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
