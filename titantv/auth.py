@@ -12,11 +12,9 @@ def load_credentials():
         "user_id": os.getenv("TITANTV_USER_ID"),
         "login_name": os.getenv("TITANTV_USERNAME"),
         "password": os.getenv("TITANTV_PASSWORD"),
-        "lineup_id": os.getenv("TITANTV_LINEUP_ID"),
     }
-    missing = [key for key, value in credentials.items() if not value]
-    if missing:
+    if not all(credentials.values()):
         raise ValueError(
-            f"Missing required environment variables: {', '.join(missing)}"
-        )
+            "Missing required environment variables: TITANTV_USER_ID, TITANTV_USERNAME, TITANTV_PASSWORD"  # noqa: E501
+        )  # noqa: E501
     return credentials

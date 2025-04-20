@@ -32,7 +32,9 @@ def main():
 
     try:
         credentials = load_credentials()
-        urls = get_api_urls(credentials["user_id"], credentials["lineup_id"])  # noqa: E501
+        urls = get_api_urls(
+            credentials["user_id"], "de9ee6e5-0d21-426b-87d7-be11545055d2"
+        )  # noqa: E501
 
         lineup_data = fetch_json(urls["lineup"], "lineup")
         channels_data = fetch_json(urls["channels"], "channels")
