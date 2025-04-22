@@ -1,3 +1,4 @@
+# Requires -Version 3.0
 # Load-Listings.ps1
 
 # Ensure we're running with admin rights
@@ -5,6 +6,9 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     Exit
 }
+
+# Set the script to run in the directory it is located in
+Set-Location -Path $PSScriptRoot
 
 # Function for consistent logging
 function Write-LogMessage {
@@ -48,6 +52,8 @@ foreach ($dir in @($dataDir, $logsDir)) {
         Write-LogMessage "Created directory: $dir" -Color DarkGray
     }
 }
+
+
 
 # Function to check Python 3 installation
 function Test-Python {
@@ -129,7 +135,7 @@ function Get-ActiveStorePath {
         $folderPath = Join-Path $epgPath $folderName
         if (Test-Path $folderPath) {
             $validStores += [PSCustomObject]@{
-                Path = $file.FullName
+                Path     = $file.FullName
                 Modified = $file.LastWriteTime
             }
         }
