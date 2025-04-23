@@ -188,12 +188,35 @@ if (-not $storePath) {
 }
 
 # Run the Python script
+# Run the Python script
 try {
     Write-LogMessage "Running Python script to generate MXF..." -Color Yellow
     $pythonExeInVenvPath = Join-Path $venvPath "Scripts\python.exe"
-    & $pythonExeInVenvPath $pythonScript
 
-    if ($LASTEXITCODE -eq 0 -and (Test-Path $mxfPath)) {
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $pythonExeInVenvPath
+    $startInfo.Arguments = "`"$pythonScript`""
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+
+    $null = $process.Start()
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+
+    if ($stdout) {
+        Write-LogMessage "Python stdout:`n$stdout" -Color Gray
+    }
+    if ($stderr) {
+        Write-LogMessage "Python stderr:`n$stderr" -Color DarkYellow
+    }
+
+    if ($process.ExitCode -eq 0 -and (Test-Path $mxfPath)) {
         Write-LogMessage "MXF file generated successfully" -Color Green
 
         # Backup
