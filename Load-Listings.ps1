@@ -1,13 +1,13 @@
 # Requires -Version 3.0
 # Load-Listings.ps1
 
-# Ensure we're running with admin rights
+# Ensure admin rights elevation
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     Exit
 }
 
-# Set the script to run in the directory it is located in
+# Set the script to run in local directory
 Set-Location -Path $PSScriptRoot
 
 # Function for consistent logging
@@ -53,8 +53,6 @@ foreach ($dir in @($dataDir, $logsDir)) {
     }
 }
 
-
-
 # Function to check Python 3 installation
 function Test-Python {
     try {
@@ -75,7 +73,9 @@ function Test-Python {
 }
 
 # Setup and validate virtual environment
+
 function Initialize-VirtualEnv {
+    # Create venv if it doesn't exist
     if (-not (Test-Path $venvPath)) {
         Write-LogMessage "Creating virtual environment..." -Color Yellow
         & $pythonExe -m venv $venvPath
@@ -87,29 +87,38 @@ function Initialize-VirtualEnv {
 
     $pythonExeInVenv = Join-Path $venvPath "Scripts\python.exe"
 
-    Write-LogMessage "Ensuring pip is up to date..." -Color Yellow
-    & $pythonExeInVenv -m pip install --upgrade pip
-    if (-not $?) {
-        Write-LogMessage "Failed to upgrade pip" -IsError
+    # Activate is implied by calling python in the venv
+    Write-LogMessage "Checking required packages..." -Color Yellow
+
+    if (-not (Test-Path $requirementsFile)) {
+        Write-LogMessage "requirements.txt not found" -IsError
         return $false
     }
 
-    if (Test-Path $requirementsFile) {
-        Write-LogMessage "Installing required packages..." -Color Yellow
+    # Get installed packages
+    $installed = & $pythonExeInVenv -m pip freeze | ForEach-Object { ($_ -split '==')[0].ToLower() }
+    $required = Get-Content $requirementsFile | Where-Object { $_ -match '\S' -and $_ -notmatch '^\s*#' } |
+    ForEach-Object { ($_ -split '==')[0].ToLower() }
+
+    # Determine missing packages
+    $missing = $required | Where-Object { $_ -notin $installed }
+
+    if ($missing.Count -gt 0) {
+        Write-LogMessage "Installing missing packages: $($missing -join ', ')" -Color Yellow
         & $pythonExeInVenv -m pip install -r $requirementsFile
         if (-not $?) {
             Write-LogMessage "Failed to install required packages" -IsError
             return $false
         }
-        Write-LogMessage "Required packages installed" -Color Green
+        Write-LogMessage "Missing packages installed" -Color Green
     }
     else {
-        Write-LogMessage "requirements.txt not found" -IsError
-        return $false
+        Write-LogMessage "All required packages are already installed" -Color Green
     }
 
     return $true
 }
+
 
 # Get active EPG store path
 function Get-ActiveStorePath {
