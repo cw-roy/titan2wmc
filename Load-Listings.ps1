@@ -18,14 +18,27 @@ function Write-LogMessage {
         [string]$Color = "White",
         [switch]$IsError
     )
-    
+
+    # Rotate log file if it exceeds 1MB
+    $maxSize = 1MB
+    if ((Test-Path $logFile) -and ((Get-Item $logFile).Length -gt $maxSize)) {
+        $timestampTag = Get-Date -Format "yyyyMMdd_HHmmss"
+        $archivedLog = Join-Path $logsDir "wmc_operations_$timestampTag.log"
+        Rename-Item -Path $logFile -NewName $archivedLog -Force
+
+        # Keep only the 3 most recent rotated logs
+        Get-ChildItem -Path $logsDir -Filter "wmc_operations_*.log" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -Skip 2 |
+            ForEach-Object { Remove-Item $_.FullName -Force }
+    }
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
-    
+
     if ($IsError) {
         Write-Host $logMessage -ForegroundColor Red
-    }
-    else {
+    } else {
         Write-Host $logMessage -ForegroundColor $Color
     }
 
@@ -235,7 +248,7 @@ try {
             Get-ChildItem -Path $dataDir -Filter "*-listings.mxf" |
             Where-Object { $_.Name -ne "listings.mxf" } |
             Sort-Object CreationTime -Descending |
-            Select-Object -Skip 7 |
+            Select-Object -Skip 2 |
             ForEach-Object {
                 Remove-Item $_.FullName -Force
                 Write-LogMessage "Removed old backup: $($_.Name)" -Color Gray

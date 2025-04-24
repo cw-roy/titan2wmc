@@ -5,7 +5,7 @@ import os
 
 # Use os.path.join() to ensure platform-agnostic paths
 CONFIG = {
-    "debug_mode": True,
+    "debug_mode": False,
     "log_to_console": True,
     "log_to_file": True,
     "log_level": "INFO",
