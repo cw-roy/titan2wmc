@@ -27,8 +27,22 @@ TITANTV_PASSWORD=your_password
 
 ## Usage
 
-1. Run `Load-Listings.ps1` by right-clicking and selecting "Run with PowerShell"
-2. The script will:
+### Creating a Desktop Shortcut to Load-Listings.ps1
+
+1. Create a Shortcut Manually
+2. Right-click your desktop and select "New" → "Shortcut"
+3. For the location, enter the following (adjust the path as needed):
+- ```powershell.exe -ExecutionPolicy Bypass -NoProfile -File "C:\Path\To\Load-Listings.ps1"```
+4. Click "Next", give the shortcut a name like "Load TV Listings`"
+5. Click "Finish"
+
+### Set the Shortcut to Run as Administrator
+
+1. Right-click the shortcut and choose "Properties"
+2. Go to the "Shortcut" tab and click the "Advanced..." button
+3. Check the box for "Run as administrator" and click OK, then Apply
+
+The script will:
    - Check for required components
    - Set up Python environment
    - Fetch latest listings
@@ -56,4 +70,4 @@ The project uses:
 - PowerShell for Windows/WMC integration
 - Python for API interaction and data processing
 - Virtual environment for dependency management
-- UTC timestamps for consistency# titan2wmc
+- UTC timestamps for consistency
