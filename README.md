@@ -1,6 +1,19 @@
 # titan2wmc
 
-A tool to fetch TV listings from TitanTV and import them into Windows Media Center (WMC).
+A tool to fetch TV listings from TitanTV and import them into Windows Media Center (WMC). 
+
+- Warning - this is very much a work in progress. Check the commit comments, I'll try to commit with notes saying whether I've broken it trying to tweak it up.
+
+## The death of Zap2it TV listings
+
+#### The Zap2it TV listings site was taken down sometime in late March 2025
+- Cord Cutters article [here](https://cordcuttersnews.com/the-popular-online-tv-guide-service-zap2it-tv-shuts-down-is-replaced-by-newsnation/) or [here](https://web.archive.org/web/20250000000000*/https://cordcuttersnews.com/the-popular-online-tv-guide-service-zap2it-tv-shuts-down-is-replaced-by-newsnation/)
+- This made the tools I was using ([ZAP2XML](https://web.archive.org/web/20200426004001/zap2xml.awardspace.info/) and [EPG Collector](https://sourceforge.net/projects/epgcollector/)) obsolete 
+- I needed an alternative so I figured I'd give it a shot using my fave languages.
+  - Python for API interaction and data massaging
+  - PowerShell for Windows file manipulation
+- I chose [TitanTV](https://titantv.com/) as my listings provider replacement
+
 
 ## Description
 
@@ -9,9 +22,19 @@ This tool automates the process of:
 2. Converting the data into WMC's MXF format
 3. Importing the listings into Windows Media Center
 
+## Resources
+- [Itechtics article on obtaining Windows Media Center](https://web.archive.org/web/20250000000000*/https://www.itechtics.com/windows-media-center/)
+  - [Download](https://mega.nz/file/OLBTSJRB#s_GEqA_SXciRh80woQlMPylSSsCwsNUAOkkYCGyG25I)
+- [The Green Button forum](https://www.thegreenbutton.tv/forums/)
+- I'll post more here as I find them, this is still a work in progress
+
+## NOTE: this has only been tested on Win10
+- I'll be testing on Win11 soon.
+
 ## Requirements
 
-- Windows 8.1 or later with Windows Media Center installed
+- Windows 8.1 or later with
+- Windows Media Center installed 
 - Python 3.x 
 - PowerShell 3.0 or later
 - Administrator privileges (required for WMC integration)
@@ -19,11 +42,19 @@ This tool automates the process of:
 
 ## Setup
 
+I won't post the APIs here but you should be able to figure them out by running a HAR capture while visiting TitanTV's site. HAR files can be huge and hard to search. Modern text editors add so much overhead that it makes it extremely slow, so I used vi. You can use vi to search for APIs like this:
+```
+:vimgrep /https:\/\/titantv\.com\/api\/\w\+\// %
+```
+
 Create a `.env` file in the root directory with your TitanTV credentials:
 ```
-TITANTV_USERNAME=your_username
-TITANTV_PASSWORD=your_password
+TITANTV_USER_ID=[Unique to username, obtain this from API 'documentation']
+TITANTV_LINEUP_ID=[Unique to your lineup set in TitanTV's website preferences]
+TITANTV_USERNAME=[your_username]
+TITANTV_PASSWORD=[your_password]
 ```
+
 
 ## Usage
 
