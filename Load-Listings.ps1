@@ -1,3 +1,13 @@
+[CmdletBinding()]
+param (
+    [switch]$ForceRefresh,
+    [string]$CustomConfigPath
+)
+
+# Set strict mode and error action preference
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
 # Requires -Version 3.0
 # Load-Listings.ps1
 
@@ -16,33 +26,59 @@ function Write-LogMessage {
         [Parameter(Mandatory = $true)]
         [string]$Message,
         [string]$Color = "White",
-        [switch]$IsError
+        [switch]$IsError,
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG')]
+        [string]$Level = 'INFO'
     )
 
-    # Rotate log file if it exceeds 1MB
+    # Configurable log size limit - 1MB default
     $maxSize = 1MB
     if ((Test-Path $logFile) -and ((Get-Item $logFile).Length -gt $maxSize)) {
         $timestampTag = Get-Date -Format "yyyyMMdd_HHmmss"
         $archivedLog = Join-Path $logsDir "wmc_operations_$timestampTag.log"
-        Rename-Item -Path $logFile -NewName $archivedLog -Force
+        
+        try {
+            Rename-Item -Path $logFile -NewName $archivedLog -Force -ErrorAction Stop
+            Write-LogMessage "Log file rotated to: $archivedLog" -Level DEBUG
+        }
+        catch {
+            Write-Warning "Failed to rotate log file: $_"
+        }
 
         # Keep only the 3 most recent rotated logs
-        Get-ChildItem -Path $logsDir -Filter "wmc_operations_*.log" |
+        try {
+            Get-ChildItem -Path $logsDir -Filter "wmc_operations_*.log" |
             Sort-Object LastWriteTime -Descending |
             Select-Object -Skip 2 |
-            ForEach-Object { Remove-Item $_.FullName -Force }
+            ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction Stop }
+        }
+        catch {
+            Write-Warning "Failed to clean up old log files: $_"
+        }
     }
 
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] $Message"
+    $logMessage = "[$timestamp][$Level] $Message"
 
-    if ($IsError) {
-        Write-Host $logMessage -ForegroundColor Red
-    } else {
-        Write-Host $logMessage -ForegroundColor $Color
+    switch ($Level) {
+        'ERROR' { $Color = 'Red' }
+        'WARNING' { $Color = 'Yellow' }
+        'DEBUG' { $Color = 'Gray' }
     }
 
-    $logMessage | Out-File -FilePath $logFile -Append -Encoding UTF8
+    if ($IsError) {
+        $Color = 'Red'
+        $Level = 'ERROR'
+    }
+
+    Write-Host $logMessage -ForegroundColor $Color
+
+    try {
+        $logMessage | Out-File -FilePath $logFile -Append -Encoding UTF8 -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Failed to write to log file: $_"
+    }
 }
 
 # Configuration
@@ -200,70 +236,124 @@ if (-not $storePath) {
     Exit 1
 }
 
-# Run the Python script
+# Function to safely execute file operations
+function Invoke-SafeFileOperation {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Operation,
+        [string]$ErrorMessage,
+        [int]$RetryCount = 3,
+        [int]$RetrySleepSeconds = 2
+    )
+
+    $attempt = 1
+    while ($true) {
+        try {
+            return & $Operation
+        }
+        catch {
+            if ($attempt -ge $RetryCount) {
+                Write-LogMessage "$ErrorMessage. Final error: $_" -Level ERROR
+                throw
+            }
+            Write-LogMessage "Attempt $attempt of $RetryCount failed: $_" -Level WARNING
+            Start-Sleep -Seconds $RetrySleepSeconds
+            $attempt++
+        }
+    }
+}
+
+# Function to validate MXF file
+function Test-MxfFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    try {
+        $fileInfo = Get-Item $Path
+        if ($fileInfo.Length -lt 1KB) {
+            Write-LogMessage "MXF file appears to be too small ($($fileInfo.Length) bytes)" -Level WARNING
+            return $false
+        }
+
+        # Add basic file header validation here if needed
+        return $true
+    }
+    catch {
+        Write-LogMessage "Failed to validate MXF file: $_" -Level ERROR
+        return $false
+    }
+}
+
 # Run the Python script
 try {
     Write-LogMessage "Running Python script to generate MXF..." -Color Yellow
     $pythonExeInVenvPath = Join-Path $venvPath "Scripts\python.exe"
 
-    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $pythonExeInVenvPath
-    $startInfo.Arguments = "`"$pythonScript`""
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $startInfo
-
-    $null = $process.Start()
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-
-    if ($stdout) {
-        Write-LogMessage "Python stdout:`n$stdout" -Color Gray
-    }
-    if ($stderr) {
-        Write-LogMessage "Python stderr:`n$stderr" -Color DarkYellow
+    $processParams = @{
+        FilePath               = $pythonExeInVenvPath
+        ArgumentList           = "`"$pythonScript`""
+        RedirectStandardOutput = $true
+        RedirectStandardError  = $true
+        UseShellExecute        = $false
+        Wait                   = $true
+        PassThru               = $true
+        NoNewWindow            = $true
     }
 
-    if ($process.ExitCode -eq 0 -and (Test-Path $mxfPath)) {
-        Write-LogMessage "MXF file generated successfully" -Color Green
+    $process = Start-Process @processParams
 
-        # Backup
-        $backupPath = Join-Path $dataDir "$timestamp-listings.mxf"
-        Copy-Item -Path $mxfPath -Destination $backupPath -Force
-        Write-LogMessage "Created backup: $($backupPath | Split-Path -Leaf)" -Color Cyan
+    if ($process.ExitCode -eq 0) {
+        if (Test-MxfFile -Path $mxfPath) {
+            Write-LogMessage "MXF file generated and validated successfully" -Color Green
 
-        # Import into WMC
-        Write-LogMessage "Importing MXF into Windows Media Center..." -Color Yellow
-        $loadMxfResult = Start-Process -FilePath $loadMxfPath -ArgumentList "-s `"$storePath`" -i `"$mxfPath`"" -Wait -PassThru
+            # Backup using safe file operation
+            $backupPath = Join-Path $dataDir "$timestamp-listings.mxf"
+            Invoke-SafeFileOperation -Operation {
+                Copy-Item -Path $mxfPath -Destination $backupPath -Force
+            } -ErrorMessage "Failed to create backup file"
 
-        if ($loadMxfResult.ExitCode -eq 0) {
-            Write-LogMessage "EPG data import completed successfully" -Color Green
+            # Import into WMC with validation
+            Write-LogMessage "Importing MXF into Windows Media Center..." -Color Yellow
+            $loadMxfResult = Start-Process -FilePath $loadMxfPath -ArgumentList "-s `"$storePath`" -i `"$mxfPath`"" -Wait -PassThru
 
-            # Clean up old backups
-            Get-ChildItem -Path $dataDir -Filter "*-listings.mxf" |
-            Where-Object { $_.Name -ne "listings.mxf" } |
-            Sort-Object CreationTime -Descending |
-            Select-Object -Skip 2 |
-            ForEach-Object {
-                Remove-Item $_.FullName -Force
-                Write-LogMessage "Removed old backup: $($_.Name)" -Color Gray
+            if ($loadMxfResult.ExitCode -eq 0) {
+                Write-LogMessage "EPG data import completed successfully" -Color Green
+                
+                # Clean up old backups safely
+                Invoke-SafeFileOperation -Operation {
+                    Get-ChildItem -Path $dataDir -Filter "*-listings.mxf" |
+                    Where-Object { $_.Name -ne "listings.mxf" } |
+                    Sort-Object CreationTime -Descending |
+                    Select-Object -Skip 2 |
+                    ForEach-Object {
+                        Remove-Item $_.FullName -Force
+                        Write-LogMessage "Removed old backup: $($_.Name)" -Level DEBUG
+                    }
+                } -ErrorMessage "Failed to clean up old backups"
+            }
+            else {
+                throw "EPG import failed with exit code: $($loadMxfResult.ExitCode)"
             }
         }
         else {
-            Write-LogMessage "EPG import failed with exit code: $($loadMxfResult.ExitCode)" -IsError
+            throw "MXF file validation failed"
         }
     }
     else {
-        Write-LogMessage "Python script failed or MXF file not generated" -IsError
+        throw "Python script failed with exit code: $($process.ExitCode)"
     }
 }
 catch {
-    Write-LogMessage "Error executing Python script: $_" -IsError
+    Write-LogMessage $_.Exception.Message -Level ERROR
+    Write-LogMessage "Stack trace: $($_.ScriptStackTrace)" -Level DEBUG
+    exit 1
+}
+finally {
+    if ($process) {
+        $process.Dispose()
+    }
 }
 
 Write-LogMessage "Operation complete. Press Enter to exit..." -Color Cyan
