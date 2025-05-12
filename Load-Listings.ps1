@@ -119,7 +119,7 @@ function Initialize-VirtualEnv {
 
     if ($missing.Count -gt 0) {
         Write-LogMessage "Installing missing packages: $($missing -join ', ')" -Color Yellow
-        & $pythonExeInVenv -m pip install -r $requirementsFile
+        & $pythonExeInVenv -m pip install -r $requirementsFile --disable-pip-version-check --quiet
         if (-not $?) {
             Write-LogMessage "Failed to install required packages" -IsError
             return $false
@@ -202,11 +202,10 @@ if (-not $storePath) {
 }
 
 # Run the Python script
-# Run the Python script
+
 try {
     Write-LogMessage "Running Python script to generate MXF..." -Color Yellow
     $pythonExeInVenvPath = Join-Path $venvPath "Scripts\python.exe"
-
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $pythonExeInVenvPath
     $startInfo.Arguments = "`"$pythonScript`""
@@ -232,39 +231,46 @@ try {
 
     if ($process.ExitCode -eq 0 -and (Test-Path $mxfPath)) {
         Write-LogMessage "MXF file generated successfully" -Color Green
-
-        # Backup
-        $backupPath = Join-Path $dataDir "$timestamp-listings.mxf"
-        Copy-Item -Path $mxfPath -Destination $backupPath -Force
-        Write-LogMessage "Created backup: $($backupPath | Split-Path -Leaf)" -Color Cyan
-
-        # Import into WMC
-        Write-LogMessage "Importing MXF into Windows Media Center..." -Color Yellow
-        $loadMxfResult = Start-Process -FilePath $loadMxfPath -ArgumentList "-s `"$storePath`" -i `"$mxfPath`"" -Wait -PassThru
-
-        if ($loadMxfResult.ExitCode -eq 0) {
-            Write-LogMessage "EPG data import completed successfully" -Color Green
-
-            # Clean up old backups
-            Get-ChildItem -Path $dataDir -Filter "*-listings.mxf" |
-            Where-Object { $_.Name -ne "listings.mxf" } |
-            Sort-Object CreationTime -Descending |
-            Select-Object -Skip 2 |
-            ForEach-Object {
-                Remove-Item $_.FullName -Force
-                Write-LogMessage "Removed old backup: $($_.Name)" -Color Gray
-            }
+        
+        # Only create backup if this isn't the first run
+        if (Test-Path $mxfPath) {
+            # Backup
+            $backupPath = Join-Path $dataDir "$timestamp-listings.mxf"
+            Copy-Item -Path $mxfPath -Destination $backupPath -Force
+            Write-LogMessage "Created backup: $($backupPath | Split-Path -Leaf)" -Color Cyan
         }
         else {
-            Write-LogMessage "EPG import failed with exit code: $($loadMxfResult.ExitCode)" -IsError
+            Write-LogMessage "First run - no previous MXF file to backup" -Color Yellow
+        }
+        
+    }
+
+    # Import into WMC
+    Write-LogMessage "Importing MXF into Windows Media Center..." -Color Yellow
+    $loadMxfResult = Start-Process -FilePath $loadMxfPath -ArgumentList "-s `"$storePath`" -i `"$mxfPath`"" -Wait -PassThru
+
+    if ($loadMxfResult.ExitCode -eq 0) {
+        Write-LogMessage "EPG data import completed successfully" -Color Green
+
+        # Clean up old backups
+        Get-ChildItem -Path $dataDir -Filter "*-listings.mxf" |
+        Where-Object { $_.Name -ne "listings.mxf" } |
+        Sort-Object CreationTime -Descending |
+        Select-Object -Skip 2 |
+        ForEach-Object {
+            Remove-Item $_.FullName -Force
+            Write-LogMessage "Removed old backup: $($_.Name)" -Color Gray
         }
     }
     else {
-        Write-LogMessage "Python script failed or MXF file not generated" -IsError
+        Write-LogMessage "EPG import failed with exit code: $($loadMxfResult.ExitCode)" -IsError
     }
 }
 catch {
-    Write-LogMessage "Error executing Python script: $_" -IsError
+    Write-LogMessage "An error occurred: $_" -IsError
+}
+finally {
+    Write-LogMessage "Finalizing the operation..." -Color Cyan
 }
 
 Write-LogMessage "Operation complete. Press Enter to exit..." -Color Cyan
