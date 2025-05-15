@@ -30,6 +30,14 @@ def main():
     os.makedirs(logs_folder, exist_ok=True)
     setup_logging(log_file)
 
+    # Debugging: Log the current working directory and paths
+    logging.info(f"Current working directory: {os.getcwd()}")
+    logging.info(f"Data folder: {data_folder}")
+    logging.info(f"Logs folder: {logs_folder}")
+    logging.info(f"Log file: {log_file}")
+    logging.info(f"Output JSON: {output_json}")
+    logging.info(f"Output MXF: {output_mxf}")
+
     try:
         credentials = load_credentials()
         urls = get_api_urls(
