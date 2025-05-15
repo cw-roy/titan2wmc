@@ -99,6 +99,8 @@ function Initialize-VirtualEnv {
         }
     }
 
+    # Initialize $startInfo properly
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $pythonExeInVenv = Join-Path $venvPath "Scripts\python.exe"
     $startInfo.FileName = $pythonExeInVenv
 
@@ -207,7 +209,6 @@ if (-not $storePath) {
 try {
     Write-LogMessage "Running Python script to generate MXF..." -Color Yellow
     $pythonExeInVenvPath = Join-Path $venvPath "Scripts\python.exe"
-    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $pythonExeInVenvPath
     $startInfo.Arguments = "`"$pythonScript`""
     $startInfo.RedirectStandardOutput = $true
