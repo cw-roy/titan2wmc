@@ -10,6 +10,8 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Set the script to run in local directory
 Set-Location -Path $PSScriptRoot
 
+Write-LogMessage "Begin TitanTV listings retrieval and processing..." -Color Cyan
+
 # Function for consistent logging
 function Write-LogMessage {
     param(
