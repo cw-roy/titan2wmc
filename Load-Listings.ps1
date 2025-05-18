@@ -19,34 +19,35 @@ function Write-LogMessage {
         [switch]$IsError
     )
 
-    Write-LogMessage "Begin TitanTV listings retrieval and processing..." -Color Cyan
-
+    
     # Rotate log file if it exceeds 1MB
     $maxSize = 1MB
     if ((Test-Path $logFile) -and ((Get-Item $logFile).Length -gt $maxSize)) {
         $timestampTag = Get-Date -Format "yyyyMMdd_HHmmss"
         $archivedLog = Join-Path $logsDir "wmc_operations_$timestampTag.log"
         Rename-Item -Path $logFile -NewName $archivedLog -Force
-
+        
         # Keep only the 3 most recent rotated logs
         Get-ChildItem -Path $logsDir -Filter "wmc_operations_*.log" |
         Sort-Object LastWriteTime -Descending |
         Select-Object -Skip 2 |
         ForEach-Object { Remove-Item $_.FullName -Force }
     }
-
+    
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
-
+    
     if ($IsError) {
         Write-Host $logMessage -ForegroundColor Red
     }
     else {
         Write-Host $logMessage -ForegroundColor $Color
     }
-
+    
     $logMessage | Out-File -FilePath $logFile -Append -Encoding UTF8
 }
+
+Write-LogMessage "Begin TitanTV listings retrieval and processing..." -Color Cyan
 
 # Configuration
 $pythonScript = Join-Path $PSScriptRoot "main.py"
