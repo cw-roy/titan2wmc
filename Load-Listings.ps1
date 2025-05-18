@@ -232,6 +232,8 @@ if (-not $storePath) {
     Exit 1
 }
 
+# Run the Python script
+
 try {
     Write-LogMessage "Running Python script to generate MXF..." -Color Yellow
 
@@ -250,17 +252,6 @@ try {
     $process.StartInfo = $startInfo
 
     $null = $process.Start()
-
-    # Display a progress spinner while the Python script runs
-    $spinner = @("|", "/", "-", "\")
-    $i = 0
-    while (-not $process.HasExited) {
-        Write-Host -NoNewline -ForegroundColor Yellow "`rRunning Python script... $($spinner[$i])"
-        Start-Sleep -Milliseconds 200
-        $i = ($i + 1) % $spinner.Length
-    }
-    Write-Host "`r"  # Clear the spinner line
-
     $stdout = $process.StandardOutput.ReadToEnd()
     $stderr = $process.StandardError.ReadToEnd()
     $process.WaitForExit()
@@ -282,48 +273,6 @@ try {
 catch {
     Write-LogMessage "An error occurred while running the Python script: $_" -IsError
 }
-
-# # Run the Python script
-
-# try {
-#     Write-LogMessage "Running Python script to generate MXF..." -Color Yellow
-
-#     # Initialize $startInfo
-#     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-#     $pythonExeInVenvPath = Join-Path $venvPath "Scripts\python.exe"
-#     $startInfo.FileName = $pythonExeInVenvPath
-#     $startInfo.Arguments = "`"$pythonScript`""
-#     $startInfo.RedirectStandardOutput = $true
-#     $startInfo.RedirectStandardError = $true
-#     $startInfo.UseShellExecute = $false
-#     $startInfo.CreateNoWindow = $true
-#     $startInfo.WorkingDirectory = $PSScriptRoot
-
-#     $process = New-Object System.Diagnostics.Process
-#     $process.StartInfo = $startInfo
-
-#     $null = $process.Start()
-#     $stdout = $process.StandardOutput.ReadToEnd()
-#     $stderr = $process.StandardError.ReadToEnd()
-#     $process.WaitForExit()
-
-#     if ($stdout) {
-#         Write-LogMessage "Python stdout:`n$stdout" -Color Gray
-#     }
-#     if ($stderr) {
-#         Write-LogMessage "Python stderr:`n$stderr" -Color DarkYellow
-#     }
-
-#     if ($process.ExitCode -eq 0 -and (Test-Path $mxfPath)) {
-#         Write-LogMessage "MXF file generated successfully" -Color Green
-#     }
-#     else {
-#         Write-LogMessage "Python script failed with exit code: $($process.ExitCode)" -IsError
-#     }
-# }
-# catch {
-#     Write-LogMessage "An error occurred while running the Python script: $_" -IsError
-# }
 
 # Import into WMC
 Write-LogMessage "Importing MXF into Windows Media Center..." -Color Yellow
