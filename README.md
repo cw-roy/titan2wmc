@@ -28,8 +28,9 @@ This tool automates the process of:
 - [The Green Button forum](https://www.thegreenbutton.tv/forums/)
 - I'll post more here as I find them, this is still a work in progress
 
-## NOTE: this has only been tested on Win10
-- I'll be testing on Win11 soon.
+## NOTE: this has only been tested on Win10 and Win11 in VirtuaBox. 
+- [VirtualBox](https://www.virtualbox.org/)
+- No guarantees it will work on older versions, but it should...I think. 
 
 ## Requirements
 
