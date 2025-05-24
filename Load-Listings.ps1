@@ -10,6 +10,27 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Set the script to run in local directory
 Set-Location -Path $PSScriptRoot
 
+# Configuration
+$pythonScript = Join-Path $PSScriptRoot "main.py"
+$dataDir = Join-Path $PSScriptRoot "data"
+$logsDir = Join-Path $PSScriptRoot "logs"
+$mxfPath = Join-Path $dataDir "listings.mxf"
+$logFile = Join-Path $logsDir "wmc_operations.log"
+$venvPath = Join-Path $PSScriptRoot ".venv"
+$requirementsFile = Join-Path $PSScriptRoot "requirements.txt"
+$pythonExe = "python"
+$loadMxfPath = "$env:SystemRoot\ehome\loadmxf.exe"
+$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+$epgPath = "C:\ProgramData\Microsoft\eHome"
+
+# Ensure 'data' and 'logs' directories exist
+foreach ($dir in @($dataDir, $logsDir)) {
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Write-LogMessage "Created directory: $dir" -Color DarkGray
+    }
+}
+
 # Function for consistent logging
 function Write-LogMessage {
     param(
@@ -49,26 +70,26 @@ function Write-LogMessage {
 
 Write-LogMessage "Begin TitanTV listings retrieval and processing..." -Color Cyan
 
-# Configuration
-$pythonScript = Join-Path $PSScriptRoot "main.py"
-$dataDir = Join-Path $PSScriptRoot "data"
-$logsDir = Join-Path $PSScriptRoot "logs"
-$mxfPath = Join-Path $dataDir "listings.mxf"
-$logFile = Join-Path $logsDir "wmc_operations.log"
-$venvPath = Join-Path $PSScriptRoot ".venv"
-$requirementsFile = Join-Path $PSScriptRoot "requirements.txt"
-$pythonExe = "python"
-$loadMxfPath = "$env:SystemRoot\ehome\loadmxf.exe"
-$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$epgPath = "C:\ProgramData\Microsoft\eHome"
+# # Configuration
+# $pythonScript = Join-Path $PSScriptRoot "main.py"
+# $dataDir = Join-Path $PSScriptRoot "data"
+# $logsDir = Join-Path $PSScriptRoot "logs"
+# $mxfPath = Join-Path $dataDir "listings.mxf"
+# $logFile = Join-Path $logsDir "wmc_operations.log"
+# $venvPath = Join-Path $PSScriptRoot ".venv"
+# $requirementsFile = Join-Path $PSScriptRoot "requirements.txt"
+# $pythonExe = "python"
+# $loadMxfPath = "$env:SystemRoot\ehome\loadmxf.exe"
+# $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+# $epgPath = "C:\ProgramData\Microsoft\eHome"
 
-# Ensure 'data' and 'logs' directories exist
-foreach ($dir in @($dataDir, $logsDir)) {
-    if (-not (Test-Path $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        Write-LogMessage "Created directory: $dir" -Color DarkGray
-    }
-}
+# # Ensure 'data' and 'logs' directories exist
+# foreach ($dir in @($dataDir, $logsDir)) {
+#     if (-not (Test-Path $dir)) {
+#         New-Item -ItemType Directory -Path $dir -Force | Out-Null
+#         Write-LogMessage "Created directory: $dir" -Color DarkGray
+#     }
+# }
 
 # Function to check Python 3 installation
 function Test-Python {
