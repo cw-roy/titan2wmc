@@ -2,7 +2,6 @@
 scratchpad.py
 data/
 logs/
-*.mxf
 *.pdf
 *.json
 *.xml
