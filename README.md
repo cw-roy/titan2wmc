@@ -4,7 +4,12 @@ A tool to fetch TV listings from TitanTV and import them into Windows Media Cent
 
 - Warning - this is very much a work in progress. Check the commit comments, I'll try to commit with notes saying whether I've broken it trying to tweak it up.
 
-05/24/2025: This seems to be working pretty well. For now, it looks like it's putting the right files in the right places. No testing has been done on a physical machine with a tuner card installed - see notes below. I've verified the MXF file structure according to what MS says it should look like so it should work, but YMMV. More info in Resources section.
+05/24/2025: This seems to be working pretty well. For now, it looks like it's putting the right files in the right places. No testing has been done on a physical machine with a tuner card installed - see notes below. 
+
+I've verified the MXF file structure according to what MS says it should look like so it should work, but YMMV. (It's essentially XML.) 
+Examples are provided in "reference" folders. 
+
+More info in Resources section.
 
 ## The death of Zap2it TV listings
 
