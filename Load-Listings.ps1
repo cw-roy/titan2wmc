@@ -70,27 +70,6 @@ function Write-LogMessage {
 
 Write-LogMessage "Begin TitanTV listings retrieval and processing..." -Color Cyan
 
-# # Configuration
-# $pythonScript = Join-Path $PSScriptRoot "main.py"
-# $dataDir = Join-Path $PSScriptRoot "data"
-# $logsDir = Join-Path $PSScriptRoot "logs"
-# $mxfPath = Join-Path $dataDir "listings.mxf"
-# $logFile = Join-Path $logsDir "wmc_operations.log"
-# $venvPath = Join-Path $PSScriptRoot ".venv"
-# $requirementsFile = Join-Path $PSScriptRoot "requirements.txt"
-# $pythonExe = "python"
-# $loadMxfPath = "$env:SystemRoot\ehome\loadmxf.exe"
-# $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-# $epgPath = "C:\ProgramData\Microsoft\eHome"
-
-# # Ensure 'data' and 'logs' directories exist
-# foreach ($dir in @($dataDir, $logsDir)) {
-#     if (-not (Test-Path $dir)) {
-#         New-Item -ItemType Directory -Path $dir -Force | Out-Null
-#         Write-LogMessage "Created directory: $dir" -Color DarkGray
-#     }
-# }
-
 # Function to check Python 3 installation
 function Test-Python {
     try {
@@ -187,46 +166,6 @@ function Get-ActiveStorePath {
     return $mostRecent.Path
 }
 
-# # Get active EPG store path
-# function Get-ActiveStorePath {
-#     $epgRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Media Center\Service\Epg"
-
-#     try {
-#         $currentDB = Get-ItemPropertyValue -Path $epgRegPath -Name "CurrentDatabase" -ErrorAction Stop
-#         if ($currentDB -and (Test-Path $currentDB)) {
-#             Write-LogMessage "Found CurrentDatabase in registry: $currentDB" -Color Cyan
-#             return $currentDB
-#         }
-#     }
-#     catch {
-#         Write-LogMessage "Registry entry 'CurrentDatabase' not found. Falling back to auto-detection." -Color Yellow
-#     }
-
-#     # Fallback: find most recent matching .db and folder pair
-#     $dbFiles = Get-ChildItem -Path $epgPath -Filter "mcepg*.db" -File
-#     $validStores = @()
-
-#     foreach ($file in $dbFiles) {
-#         $folderName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-#         $folderPath = Join-Path $epgPath $folderName
-#         if (Test-Path $folderPath) {
-#             $validStores += [PSCustomObject]@{
-#                 Path     = $file.FullName
-#                 Modified = $file.LastWriteTime
-#             }
-#         }
-#     }
-
-#     if ($validStores.Count -eq 0) {
-#         Write-LogMessage "No valid store database files found in $epgPath" -IsError
-#         return $null
-#     }
-
-#     $mostRecent = $validStores | Sort-Object Modified -Descending | Select-Object -First 1
-#     Write-LogMessage "Using most recently modified store: $($mostRecent.Path)" -Color Cyan
-#     return $mostRecent.Path
-# }
-
 # Verify WMC is installed
 if (-not (Test-Path $loadMxfPath)) {
     Write-LogMessage "Windows Media Center not installed or loadmxf.exe missing" -IsError
@@ -257,7 +196,7 @@ if (-not $storePath) {
 # Run the Python script
 
 try {
-    Write-LogMessage "Running Python script to generate MXF..." -Color Yellow
+    Write-LogMessage "Accessing TitanTV API to generate MXF..." -Color Yellow
 
     # Initialize $startInfo
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -279,17 +218,17 @@ try {
     $process.WaitForExit()
 
     if ($stdout) {
-        Write-LogMessage "Python stdout:`n$stdout" -Color Gray
+        Write-LogMessage "API script output:`n$stdout" -Color Gray
     }
     if ($stderr) {
-        Write-LogMessage "Python stderr:`n$stderr" -Color DarkYellow
+        Write-LogMessage "API script output:`n$stderr" -Color DarkYellow
     }
 
     if ($process.ExitCode -eq 0 -and (Test-Path $mxfPath)) {
         Write-LogMessage "MXF file generated successfully" -Color Green
     }
     else {
-        Write-LogMessage "Python script failed with exit code: $($process.ExitCode)" -IsError
+        Write-LogMessage "API Python script failed with exit code: $($process.ExitCode)" -IsError
     }
 }
 catch {
