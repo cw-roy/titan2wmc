@@ -1,15 +1,15 @@
 {
   "lineups": [
     {
-      "lineupId": "de9ee6e5-0d21-426b-87d7-be11545055d2",
-      "lineupName": "Broadcast - Spokane WA",
+      "lineupId": "lineup-1234567890abcdef",
+      "lineupName": "Broadcast - City, State",
       "timeZone": "Pacific",
       "utcOffset": -480,
       "observesDst": true,
       "providerId": 881,
       "deviceType": "B",
-      "providerName": "Broadcast - Spokane WA",
-      "shareToken": "Lx9Dj1Ne86K96gSNvEqV9fpSwMWIk5iRhrwN9IzsgFI-ROuBuhvkPw",
+      "providerName": "Broadcast - City, State",
+      "shareToken": "some-share-token-123456",
       "dateAdded": "2025-03-27T16:28:00",
       "lastUpdate": "2025-03-27T16:28:00",
       "isDefault": true,
