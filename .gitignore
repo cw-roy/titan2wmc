@@ -2,10 +2,7 @@
 scratchpad.py
 data/
 logs/
-*.pdf
-*.json
-*.xml
-*.lnk
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

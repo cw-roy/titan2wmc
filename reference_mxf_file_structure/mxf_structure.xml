@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MXF>
+  <Assembly name="mcepg"/>
+  <Assembly name="mcstore" />
+  <Providers>
+    <Provider id="1" name="FooListings" displayName="Foo Listings" copyright="© 2008 Foo Corporation. All Rights Reserved." />
+  </Providers>
+  <With provider="1">
+    <Keywords />
+    <KeywordGroups />
+    <GuideImages />
+    <People />
+    <SeriesInfos />
+    <Seasons />
+    <Programs />
+    <Affiliates />
+    <Services />
+    <ScheduleEntries />
+    <Lineups />
+  </With>
+</MXF>
